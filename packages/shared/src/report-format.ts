@@ -40,7 +40,9 @@ export function formatCell(v: string | number | bigint | null | undefined, f: Co
  */
 export function fitWidth(s: string, l: ColumnLayout, numeric: boolean): string {
   const w = l.width;
-  if (numeric && l.pad === "0" && l.align === "r") {
+  // zeros only before a plain number (1500, -1500, 1500.25): "(1.500)", "1.500-" or "Rp 1.500" pad with spaces
+  if (numeric && l.pad === "0" && l.align === "r" && /^-?\d+([.,]\d+)?$/.test(s)) {
+    if (w <= 1) return s.startsWith("-") ? "-" : s.slice(-1);
     const neg = s.startsWith("-");
     const digits = neg ? s.slice(1) : s;
     return (neg ? "-" : "") + digits.slice(-(w - (neg ? 1 : 0))).padStart(w - (neg ? 1 : 0), "0");

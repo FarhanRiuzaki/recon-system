@@ -15,16 +15,24 @@ import { Input } from "@starterkit/ui/ui/input";
 import { Select } from "@starterkit/ui/ui/select";
 import { Textarea } from "@starterkit/ui/ui/textarea";
 import type { Selected } from "./report-canvas";
-import { duplicateColumn, patchColumn, removeColumn } from "./spec-model";
+import { useState } from "react";
+import { duplicateColumn, patchColumn, removeColumn, widthOf } from "./spec-model";
 
-type Change = (fn: (s: ReportSpec) => ReportSpec, said?: string) => void;
+type Change = (fn: (s: ReportSpec) => ReportSpec, said?: string, key?: string) => void;
+
+/** The width as typed (it may be empty for a moment); a valid number goes to the design, leaving the field restores it. */
+function WidthInput({ id, value, onWidth }: { id: string; value: number; onWidth: (w: number) => void }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  return <Input id={id} type="number" min={1} max={200} value={draft ?? String(value)} onBlur={() => setDraft(null)}
+    onChange={(e) => { setDraft(e.target.value); const w = widthOf(e.target.value); if (w !== null) onWidth(w); }} />;
+}
 const NUMBER: Extract<ColumnFormat, { kind: "number" }> = { kind: "number", decimals: 0, thousands: ".", negative: "minus", prefix: "", suffix: "" };
 const TOKENS = "{recon}, {template}, {date}, {from}, {to}, {made_at}";
 
 function ColumnInspector({ spec, c, change, fields, sample, problem, readOnly, select }: {
   spec: ReportSpec; c: ReportColumn; change: Change; fields: Map<string, ListedField>; sample: string | null; problem: string | null; readOnly: boolean; select: (s: Selected) => void;
 }) {
-  const set = (patch: Partial<ReportColumn>, said?: string) => change((s) => patchColumn(s, c.id, patch), said);
+  const set = (patch: Partial<ReportColumn>, said?: string, key?: string) => change((s) => patchColumn(s, c.id, patch), said, key);
   const f = c.content.kind === "field" ? fields.get(c.content.ref) : undefined;
   const options = [...fields.values()];
   const numericFields = options.filter((x) => x.type === "number");
@@ -34,7 +42,7 @@ function ColumnInspector({ spec, c, change, fields, sample, problem, readOnly, s
     <Inspector title="Column" meta={`${spec.columns.indexOf(c) + 1} of ${spec.columns.length}`}>
       <fieldset disabled={readOnly} className="grid min-w-0 gap-1">
         <InspectorSection title="Header">
-          <Input aria-label="Column header" value={c.header} onChange={(e) => set({ header: e.target.value })} />
+          <Input aria-label="Column header" value={c.header} onChange={(e) => set({ header: e.target.value }, undefined, `${c.id}:header`)} />
         </InspectorSection>
         <InspectorSection title="Holds">
           <Segmented label="What the column holds" value={c.content.kind} options={[{ value: "field", label: "Field" }, { value: "formula", label: "Formula" }, { value: "text", label: "Text" }, { value: "rownum", label: "Row no." }]}
@@ -55,7 +63,7 @@ function ColumnInspector({ spec, c, change, fields, sample, problem, readOnly, s
           </>}
           {c.content.kind === "formula" && (
             <Field id="col-cel" label="Formula" error={problem} note={problem ? undefined : sample !== null ? `On the first row: ${sample || "(empty)"}` : "Fields by name: a.amount_minor, b.ext_ref, a.attrs.member, recon.reason."}>
-              <Textarea id="col-cel" className="font-mono" rows={3} spellCheck={false} value={c.content.cel} onChange={(e) => set({ content: { kind: "formula", cel: e.target.value } })} />
+              <Textarea id="col-cel" className="font-mono" rows={3} spellCheck={false} value={c.content.cel} onChange={(e) => set({ content: { kind: "formula", cel: e.target.value } }, undefined, `${c.id}:cel`)} />
             </Field>
           )}
           {c.content.kind === "formula" && numericFields.length > 0 && (
@@ -63,7 +71,7 @@ function ColumnInspector({ spec, c, change, fields, sample, problem, readOnly, s
               {numericFields.slice(0, 8).map((x) => <Button key={x.ref} type="button" variant="secondary" size="sm" className="font-mono" onClick={() => set({ content: { kind: "formula", cel: `${(c.content as { cel: string }).cel} ${x.ref.replace(":", ".")}`.trim() } })}>{x.ref.replace(":", ".")}</Button>)}
             </div>
           )}
-          {c.content.kind === "text" && <Input aria-label="Text in every row" value={c.content.text} onChange={(e) => set({ content: { kind: "text", text: e.target.value } })} />}
+          {c.content.kind === "text" && <Input aria-label="Text in every row" value={c.content.text} onChange={(e) => set({ content: { kind: "text", text: e.target.value } }, undefined, `${c.id}:text`)} />}
           {c.content.kind === "rownum" && <p className="text-body-sm text-fg-3">Counts the rows: 1, 2, 3 … through the file.</p>}
           {f?.customer && <Notice tone="info">Customer data: shown masked (last 4 kept). Only an official report approved as full shows it whole.</Notice>}
         </InspectorSection>
@@ -75,7 +83,7 @@ function ColumnInspector({ spec, c, change, fields, sample, problem, readOnly, s
               <Field id="fmt-dec" label="Decimals"><Select id="fmt-dec" value={String(format.decimals)} onChange={(e) => set({ format: { ...format, decimals: Number(e.target.value) } })}>{[0, 1, 2, 3, 4].map((d) => <option key={d}>{d}</option>)}</Select></Field>
               <Field id="fmt-thou" label="Thousands"><Select id="fmt-thou" value={format.thousands} onChange={(e) => set({ format: { ...format, thousands: e.target.value as "." } })}><option value=".">1.000.000</option><option value=",">1,000,000</option><option value="none">1000000</option></Select></Field>
               <Field id="fmt-neg" label="Negative"><Select id="fmt-neg" value={format.negative} onChange={(e) => set({ format: { ...format, negative: e.target.value as "minus" } })}><option value="minus">-1.500</option><option value="paren">(1.500)</option><option value="trailing">1.500-</option></Select></Field>
-              <Field id="fmt-pre" label="Before"><Input id="fmt-pre" value={format.prefix} maxLength={10} placeholder="Rp " onChange={(e) => set({ format: { ...format, prefix: e.target.value } })} /></Field>
+              <Field id="fmt-pre" label="Before"><Input id="fmt-pre" value={format.prefix} maxLength={10} placeholder="Rp " onChange={(e) => set({ format: { ...format, prefix: e.target.value } }, undefined, `${c.id}:prefix`)} /></Field>
             </div>
             <FormatExample items={[formatCell(-1234567.891, format), formatCell(98000000, format)]} />
           </>}
@@ -105,7 +113,7 @@ function ColumnInspector({ spec, c, change, fields, sample, problem, readOnly, s
           <Segmented label="Align" value={c.layout.align} options={[{ value: "l", label: "Left" }, { value: "c", label: "Centre" }, { value: "r", label: "Right" }]} onChange={(a) => set({ layout: { ...c.layout, align: a } })} />
           <div className="grid grid-cols-2 gap-2">
             <Field id="col-width" label={spec.output.format === "txt" ? "Width (characters)" : "Width"}>
-              <Input id="col-width" type="number" min={1} max={200} value={c.layout.width} onChange={(e) => set({ layout: { ...c.layout, width: Math.max(1, Math.min(200, Number(e.target.value) || 1)) } })} />
+              <WidthInput id="col-width" value={c.layout.width} onWidth={(w) => set({ layout: { ...c.layout, width: w } }, undefined, `${c.id}:width`)} />
             </Field>
             {spec.output.format === "txt" && (
               <Field id="col-pad" label="Fill with"><Select id="col-pad" value={c.layout.pad} onChange={(e) => set({ layout: { ...c.layout, pad: e.target.value as " " } })}><option value=" ">Spaces</option><option value="0">Zeros (numbers)</option></Select></Field>
@@ -168,7 +176,7 @@ function ReportInspector({ spec, change, name, onName }: { spec: ReportSpec; cha
         </Field>
       </InspectorSection>
       <InspectorSection title="File">
-        <Field id="rep-file" label="File name" note={`Uses ${TOKENS.replace(", {made_at}", "")}`}><Input id="rep-file" className="font-mono" value={o.fileName} onChange={(e) => out({ fileName: e.target.value })} /></Field>
+        <Field id="rep-file" label="File name" note={`Uses ${TOKENS.replace(", {made_at}", "")}`}><Input id="rep-file" className="font-mono" value={o.fileName} onChange={(e) => change((s) => ({ ...s, output: { ...s.output, fileName: e.target.value } }), undefined, "fileName")} /></Field>
         {o.format === "csv" && (
           <div className="grid grid-cols-2 gap-2">
             <Field id="rep-delim" label="Separator"><Select id="rep-delim" value={o.csv.delimiter} onChange={(e) => out({ csv: { ...o.csv, delimiter: e.target.value as "," } })}><option value=",">Comma ,</option><option value=";">Semicolon ;</option><option value={"\t"}>Tab</option><option value="|">Pipe |</option></Select></Field>
@@ -202,10 +210,10 @@ export function InspectorPane({ spec, selected, select, change, fields, preview,
     return (
       <Inspector title={k === "title" ? "Title" : k === "header" ? "Header block" : "Footer"}>
         <fieldset disabled={readOnly} className="grid min-w-0 gap-3">
-          {k === "title" && <Field id="sec-title" label="Title" note={`Uses ${TOKENS}`}><Input id="sec-title" value={s.title.text} onChange={(e) => change((x) => ({ ...x, sections: { ...x.sections, title: { ...x.sections.title, text: e.target.value } } }))} /></Field>}
+          {k === "title" && <Field id="sec-title" label="Title" note={`Uses ${TOKENS}`}><Input id="sec-title" value={s.title.text} onChange={(e) => change((x) => ({ ...x, sections: { ...x.sections, title: { ...x.sections.title, text: e.target.value } } }), undefined, "title")} /></Field>}
           {k === "header" && <HeaderLines spec={spec} change={change} fields={fields} />}
           {k === "footer" && <>
-            <Field id="sec-foot" label="Text" note={`Uses ${TOKENS}`}><Input id="sec-foot" value={s.footer.text} placeholder="Confidential · for OJK" onChange={(e) => change((x) => ({ ...x, sections: { ...x.sections, footer: { ...x.sections.footer, text: e.target.value } } }))} /></Field>
+            <Field id="sec-foot" label="Text" note={`Uses ${TOKENS}`}><Input id="sec-foot" value={s.footer.text} placeholder="Confidential · for OJK" onChange={(e) => change((x) => ({ ...x, sections: { ...x.sections, footer: { ...x.sections.footer, text: e.target.value } } }), undefined, "footer")} /></Field>
             <Checkbox checked={s.footer.stamp} label="Final / Not final stamp" onToggle={() => change((x) => ({ ...x, sections: { ...x.sections, footer: { ...x.sections.footer, stamp: !x.sections.footer.stamp } } }))} />
             <Checkbox checked={s.footer.pageNumbers} label="Page numbers (PDF)" onToggle={() => change((x) => ({ ...x, sections: { ...x.sections, footer: { ...x.sections.footer, pageNumbers: !x.sections.footer.pageNumbers } } }))} />
           </>}

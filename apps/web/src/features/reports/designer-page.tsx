@@ -20,6 +20,8 @@ import { Input } from "@starterkit/ui/ui/input";
 import { toast } from "@starterkit/ui/ui/toast";
 import { PageHeader } from "@/components/shell/page-header";
 import { errorText } from "@/lib/client/api";
+import { useLeaveGuard } from "@/lib/client/use-leave-guard";
+import { LazyConfirmActionDialog } from "@/components/lazy-confirm";
 import { DataPane, type DragItem, type Special } from "./data-pane";
 import { KEYBOARD_CODES, placement, pointerXOf } from "./drop-model";
 import { InspectorPane } from "./inspector-pane";
@@ -27,7 +29,7 @@ import { type DropMark, ReportCanvas, type Selected } from "./report-canvas";
 import { EDIT_DRAFT_REASON, FORMAT_LABEL, sampleLine } from "./report-text";
 import { serialSaver } from "./saver";
 import {
-  addColumn, addGroup, columnOfField, history, type History, keyAction, moveColumn, removeColumn, replaceField, sendProblem, setFormat, specialColumn,
+  addColumn, addGroup, columnOfField, draftProblem, history, type History, keyAction, moveColumn, removeColumn, replaceField, sendProblem, setFormat, specialColumn,
 } from "./spec-model";
 import { reportsApi, reportsHref, useFields, usePreview, useSampleState, useSpaceRoles, useTemplate, useTemplateActions } from "./use-reports";
 
@@ -89,16 +91,19 @@ export function DesignerPage({ spaceId, templateId, versionId: asked }: { spaceI
   useEffect(() => {
     if (readOnly || !current || !v) return;
     const now = JSON.stringify(current);
-    if (now === (savedJson || JSON.stringify({ spec: v.spec, name: template.data?.name ?? "" }))) return;
+    // what the API would refuse waits (the header says why) instead of failing the save
+    if (now === (savedJson || JSON.stringify({ spec: v.spec, name: template.data?.name ?? "" })) || draftProblem(current.spec)) return;
     const t = setTimeout(() => saver.push(current), SAVE_DELAY_MS);
     return () => clearTimeout(t);
   }, [current, readOnly, saver, savedJson, v, template.data?.name]);
 
   /** One edit of the design; `said` = a toast with Undo (for what a person may not have meant). */
-  const change = (fn: (s: ReportSpec) => ReportSpec, said?: string) => {
+  /** One edit; `key` groups typing in one field into one undo step; a toast's Undo undoes its own edit only while it is the latest. */
+  const change = (fn: (s: ReportSpec) => ReportSpec, said?: string, key?: string) => {
     if (readOnly) return;
-    setHist((h) => (h ? history.push(h, fn(h.now)) : h));
-    if (said) toast.undo(said, () => setHist((h) => (h ? history.undo(h) : h)));
+    let after: ReportSpec | null = null;
+    setHist((h) => { if (!h) return h; const n = history.push(h, fn(h.now), key); after = n.now; return n; });
+    if (said) toast.undo(said, () => setHist((h) => (h && after && h.now === after ? history.undo(h) : h)));
   };
   const undo = () => setHist((h) => (h ? history.undo(h) : h));
   const redo = () => setHist((h) => (h ? history.redo(h) : h));
@@ -152,6 +157,10 @@ export function DesignerPage({ spaceId, templateId, versionId: asked }: { spaceI
     if (item.kind === "field") addField(item.field, at); else addSpecial(item.special, at);
   };
 
+  // leaving with a change not stored yet (the 800 ms wait, a failed save, a draft the API would refuse) asks first
+  const dirty = !readOnly && !!current && !!v && JSON.stringify(current) !== (savedJson || JSON.stringify({ spec: v.spec, name: template.data?.name ?? "" }));
+  const guard = useLeaveGuard(dirty);
+
   // Test with real data: the edits stored first, then a masked sample of the preview date for the worker to make
   const [sampleId, setSampleId] = useState<string | undefined>(undefined);
   const sample = useSampleState(spaceId, sampleId);
@@ -173,7 +182,8 @@ export function DesignerPage({ spaceId, templateId, versionId: asked }: { spaceI
 
   if (!spec || !v || !template.data) return <PageHeader title="Report design" trail={[{ label: "Reports", href: reportsHref(spaceId, "/templates") }]} />;
   const blocked = sendProblem(spec) ?? (preview.data?.problems[0]?.message ?? null);
-  const saveLine = save === "saving" ? "Saving…" : save === "failed" ? <span className="text-down-ink">Not saved · <button type="button" className="underline" onClick={() => setSavedJson("")}>Retry</button></span> : "Saved";
+  const waiting = !readOnly ? draftProblem(spec) : null;
+  const saveLine = waiting ? <span className="text-degraded-ink">Not saved yet: {waiting}</span> : save === "saving" ? "Saving…" : save === "failed" ? <span className="text-down-ink">Not saved · <button type="button" className="underline" onClick={() => setSavedJson("")}>Retry</button></span> : "Saved";
   const idx = new Map((preview.data?.columns ?? []).map((c, i) => [c.id, i]));
   const firstRow = preview.data?.lines.find((l) => l.kind === "row");
   return (
@@ -220,6 +230,12 @@ export function DesignerPage({ spaceId, templateId, versionId: asked }: { spaceI
             </Panel>
           </div>
         </div>
+        {guard.leaving && (
+          <LazyConfirmActionDialog open onOpenChange={(o) => { if (!o) guard.stay(); }} auditFields={false} reasons={[]} destructive title="Leave without saving"
+            onCloseAutoFocus={(e) => { e.preventDefault(); guard.restoreFocus(); }}
+            description={waiting ? `The last change isn't saved: ${waiting}` : save === "failed" ? "The last change wasn't saved: the save failed." : "The last change is still saving."}
+            impact={["Changes not saved yet are discarded."]} actionLabel="Leave page" onConfirm={async () => guard.leave()} />
+        )}
         <DragOverlay dropAnimation={null}>
           {dragging && <span className="inline-flex items-center gap-2 rounded-ctl border border-line bg-card px-3 py-1.5 text-body-sm shadow-overlay">
             <TypeBadge type={dragging.kind === "field" ? dragging.field.type : dragging.kind === "special" ? "formula" : "text"} />

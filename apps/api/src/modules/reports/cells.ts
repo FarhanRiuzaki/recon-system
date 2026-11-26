@@ -70,7 +70,9 @@ export function renderRow(spec: ReportSpec, row: DataRow, index: number, r: Rend
       continue;
     }
     const text = v === null ? "" : r.masked && r.customer.has(c.id) ? maskValue(String(v)) : formatCell(v, c.format);
-    out.cells.push(text); out.raw.push(v); out.marks.push(markOf(c, v));
+    // a masked cell gets no highlight: "equals", "negative" or "not zero" would tell what it holds
+    const hidden = r.masked && r.customer.has(c.id);
+    out.cells.push(text); out.raw.push(v); out.marks.push(hidden ? null : markOf(c, v));
   }
   return out;
 }

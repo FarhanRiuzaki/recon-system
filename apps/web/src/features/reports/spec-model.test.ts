@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { emptySpec } from "@starterkit/shared/report-spec";
 import {
-  addColumn, addGroup, columnOfField, toggleSummary, dataOnly, duplicateColumn, history, keyAction, moveColumn, patchColumn, removeColumn, removeGroup, replaceField, sendProblem, setFormat, specialColumn, toggleSection,
+  addColumn, addGroup, columnOfField, toggleSummary, draftProblem, widthOf, dataOnly, duplicateColumn, history, keyAction, moveColumn, patchColumn, removeColumn, removeGroup, replaceField, sendProblem, setFormat, specialColumn, toggleSection,
 } from "./spec-model";
 
 const ref = { ref: "a:ext_ref", label: "Reference", type: "text" as const, customer: false };
@@ -88,4 +88,25 @@ describe("summary only", () => {
     expect(sendProblem({ ...two(), summaryOnly: true })).toBe("Group by at least one field for a summary.");
   });
 });
+});
+
+describe("minors", () => {
+  it("typing in one field is one undo step (same key within a second); another field starts a new step", () => {
+    let h = history.start(emptySpec());
+    h = history.push(h, { ...emptySpec(), output: { ...emptySpec().output, fileName: "a" } }, "file", 1000);
+    h = history.push(h, { ...emptySpec(), output: { ...emptySpec().output, fileName: "ab" } }, "file", 1500);
+    expect(h.past.length).toBe(1);
+    h = history.push(h, { ...h.now, official: true }, "official", 1600);
+    expect(h.past.length).toBe(2);
+    h = history.push(h, { ...h.now, output: { ...h.now.output, fileName: "abc" } }, "file", 3000);
+    expect(h.past.length).toBe(3);
+  });
+  it("a draft the API would refuse is said, not sent: an empty formula, made neither after runs nor on request", () => {
+    expect(draftProblem(emptySpec())).toBeNull();
+    expect(draftProblem({ ...two(), columns: [{ ...two().columns[0]!, header: "Diff", content: { kind: "formula", cel: " " } }] })).toBe("Diff: write the formula.");
+    expect(draftProblem({ ...emptySpec(), when: { afterRun: false, onRequest: false } })).toBe("Make it after every run, on request, or both.");
+  });
+  it("the width input: digits clamp to 1–200, empty or text is no width yet", () => {
+    expect([widthOf("12"), widthOf("0"), widthOf("999"), widthOf(""), widthOf("x")]).toEqual([12, 1, 200, null, null]);
+  });
 });

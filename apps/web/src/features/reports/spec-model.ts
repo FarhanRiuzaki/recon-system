@@ -109,11 +109,27 @@ export function toggleSummary(spec: ReportSpec): ReportSpec {
   return { ...spec, summaryOnly: true, totals: { ...spec.totals, on: true, columns } };
 }
 
+/** Why the API would refuse this draft as it is (the save waits, the header says so): an empty formula, no "when". */
+export function draftProblem(spec: ReportSpec): string | null {
+  const f = spec.columns.find((c) => c.content.kind === "formula" && !c.content.cel.trim());
+  if (f) return `${f.header || "A column"}: write the formula.`;
+  if (!spec.when.afterRun && !spec.when.onRequest) return "Make it after every run, on request, or both.";
+  return null;
+}
+
+/** A width typed in the inspector: digits clamped to 1–200; empty or not a number is no width yet (the field keeps it). */
+export const widthOf = (s: string): number | null => (/^\d+$/.test(s.trim()) ? Math.max(1, Math.min(200, Number(s))) : null);
+
 /** Undo and redo over whole designs (at most 80 steps back). */
-export type History = { past: ReportSpec[]; now: ReportSpec; future: ReportSpec[] };
+/** `key`/`at`: the last edit's field and time; edits of one field within a second are one step (typing a header). */
+export type History = { past: ReportSpec[]; now: ReportSpec; future: ReportSpec[]; key?: string; at?: number };
 export const history = {
   start: (now: ReportSpec): History => ({ past: [], now, future: [] }),
-  push: (h: History, next: ReportSpec): History => (next === h.now ? h : { past: [...h.past, h.now].slice(-80), now: next, future: [] }),
+  push: (h: History, next: ReportSpec, key?: string, at = Date.now()): History => {
+    if (next === h.now) return h;
+    if (key && h.key === key && h.at !== undefined && at - h.at < 1000) return { past: h.past, now: next, future: [], key, at };
+    return { past: [...h.past, h.now].slice(-80), now: next, future: [], key, at };
+  },
   undo: (h: History): History => (h.past.length ? { past: h.past.slice(0, -1), now: h.past.at(-1)!, future: [h.now, ...h.future] } : h),
   redo: (h: History): History => (h.future.length ? { past: [...h.past, h.now], now: h.future[0]!, future: h.future.slice(1) } : h),
 };

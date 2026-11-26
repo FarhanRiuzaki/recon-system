@@ -37,3 +37,13 @@ describe("fitWidth", () => {
     expect(fitWidth("AB", { align: "r", width: 4, pad: "0" }, false)).toBe("  AB");
   });
 });
+
+describe("fitWidth edge cases", () => {
+  it("zero padding only for a plain number; other negatives and prefixes pad with spaces; width 1 cuts", () => {
+    expect(fitWidth("(1.500)", { align: "r", width: 9, pad: "0" }, true)).toBe("  (1.500)");
+    expect(fitWidth("1500-", { align: "r", width: 8, pad: "0" }, true)).toBe("   1500-");
+    expect(fitWidth("Rp 1.500", { align: "r", width: 10, pad: "0" }, true)).toBe("  Rp 1.500");
+    expect(fitWidth("-1500", { align: "r", width: 1, pad: "0" }, true)).toBe("-");
+    expect(fitWidth("1500.25", { align: "r", width: 9, pad: "0" }, true)).toBe("001500.25");
+  });
+});

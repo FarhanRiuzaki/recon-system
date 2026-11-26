@@ -101,4 +101,15 @@ describe("preview", () => {
     expect(p.lines.map((l) => l.cells[0]).join()).not.toContain("3201999999990001");
     expect(p.lines.every((l) => l.cells[0] === "" || /^·+0001$/.test(l.cells[0]!))).toBe(true);
   });
+
+  it("a formula, a filter or a group on a field the data doesn't have is named too", async () => {
+    const spec: ReportSpec = { ...V.spec, columns: [{ ...columnFor("c1", "a:amount_minor", "Calc"), content: { kind: "formula", cel: "a.attrs.gone + 1.0" } }],
+      rows: { filters: [{ ref: "b:attrs.lost", op: "not_empty", value: [] }] }, groups: ["a:attrs.away"] };
+    const p = await json<Preview>(draft(spec));
+    expect(p.problems).toEqual(expect.arrayContaining([
+      { columnId: "c1", message: "Calc: Field not in the data." },
+      { columnId: "", message: "A filter reads a field not in the data: b:attrs.lost." },
+      { columnId: "", message: "Group by reads a field not in the data: a:attrs.away." },
+    ]));
+  });
 });

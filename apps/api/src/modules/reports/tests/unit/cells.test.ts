@@ -60,3 +60,11 @@ describe("renderRow", () => {
     expect(cells(s).marks).toEqual(["red"]);
   });
 });
+
+describe("highlight on masked data", () => {
+  it("a masked column gives no highlight (it would tell what the value is); unmasked it does", () => {
+    const s = spec([{ ...columnFor("c1", "a:account_ref", "Acct"), format: { kind: "auto" }, highlight: { when: "equals", value: "1002345678", style: "red" } }]);
+    expect(cells(s).marks).toEqual([null]);
+    expect(cells({ ...s, official: true, output: { ...s.output, masking: "full" } }).marks).toEqual(["red"]);
+  });
+});

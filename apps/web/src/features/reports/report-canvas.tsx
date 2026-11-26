@@ -214,6 +214,7 @@ export function ReportCanvas(p: Props) {
       {flat && <Notice tone="info">{fmt === "csv" ? "CSV holds the rows: the header block's lines come first, the footer's text last." : "Every line is the columns side by side at their widths; set a column's width and padding on the right."}</Notice>}
       <RowsBar spec={spec} change={change} fields={fields} readOnly={readOnly} count={data ? data.rows : null} date={p.date} />
       {preview.error && <Notice tone="warn">The preview didn&apos;t load: {preview.error}</Notice>}
+      {(data?.problems ?? []).filter((x) => !x.columnId).map((x) => <Notice key={x.message} tone="warn">{x.message}</Notice>)}
       {fmt === "pdf" ? <div className="rounded-sm border border-line bg-card p-6 shadow-overlay">{body}</div> : body}
     </div>
   );

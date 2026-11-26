@@ -24,6 +24,7 @@ import { type Problem, type Renderer, renderRow, rendererOf } from "./cells";
 import { type Line, linesOf, type RowIn, rowLine, type Sheet, type SheetCtx, sheetOf, totaller } from "./lines";
 import { maskValue } from "./mask";
 import { catalogRefs, fieldCatalog } from "./fields";
+import { refsOf } from "./formula";
 import { reportHtml } from "./pdf-html";
 import { datasetRows } from "./rows";
 import { reportFiles, reportTemplates, reportVersions } from "./schema";
@@ -298,10 +299,17 @@ export function previewReport(ctx: Ctx, templateId: string, versionId: string, b
     }
     // a column on a field this recon's data doesn't have (an attribute its source dropped) is empty: say so on it
     const known = catalogRefs(await fieldCatalog(tx, spaceId, t.configId, spec.dataset));
+    // a source field (a:, b:, item:) the catalog lacks; the recon's own fields are always there
+    const lost = (r: string) => /^(a|b|item):/.test(r) && !known.has(r);
     for (const c of spec.columns) {
-      const refs = c.content.kind === "field" ? [c.content.ref, ...(c.content.fallback ? [c.content.fallback] : [])] : [];
-      if (refs.some((r) => !known.has(r)) && !problems.has(c.id)) problems.set(c.id, { columnId: c.id, message: `${c.header || "A column"}: Field not in the data.` });
+      const refs = c.content.kind === "field" ? [c.content.ref, ...(c.content.fallback ? [c.content.fallback] : [])] : c.content.kind === "formula" ? refsOf(c.content.cel) : [];
+      if (refs.some(lost) && !problems.has(c.id)) problems.set(c.id, { columnId: c.id, message: `${c.header || "A column"}: Field not in the data.` });
     }
+    // not a column's: said once each, without a column (the designer shows them above the table)
+    const other: Problem[] = [
+      ...spec.rows.filters.filter((f) => lost(f.ref)).map((f) => ({ columnId: "", message: `A filter reads a field not in the data: ${f.ref}.` })),
+      ...spec.groups.filter(lost).map((g) => ({ columnId: "", message: `Group by reads a field not in the data: ${g}.` })),
+    ];
     const n = await names(tx, spaceId, t.configId, t.id);
     const mask = maskerOf(customer, true);
     const masked: ReportSpec = { ...spec, output: { ...spec.output, masking: "masked" } };
@@ -309,7 +317,7 @@ export function previewReport(ctx: Ctx, templateId: string, versionId: string, b
     const lines = linesOf(spec, rows.slice(0, PREVIEW_ROWS), mask, hiddenColumns(masked, customer));
     return {
       columns: spec.columns.map((c) => ({ id: c.id, header: c.header })), lines: lines.map((l) => ({ kind: l.kind, cells: l.cells, marks: l.marks })), sheet,
-      text: spec.output.format === "txt" ? txtLines(lines, sheet) : null, problems: [...problems.values()], rows: Math.min(rows.length, PREVIEW_ROWS),
+      text: spec.output.format === "txt" ? txtLines(lines, sheet) : null, problems: [...problems.values(), ...other], rows: Math.min(rows.length, PREVIEW_ROWS),
     };
   });
 }
