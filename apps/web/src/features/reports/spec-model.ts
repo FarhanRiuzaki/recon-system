@@ -70,7 +70,11 @@ export const patchColumn = (spec: ReportSpec, id: string, patch: Partial<ReportC
 
 export const addGroup = (spec: ReportSpec, ref: string): ReportSpec =>
   spec.groups.includes(ref) || spec.groups.length >= REPORT_GROUPS_MAX ? spec : { ...spec, groups: [...spec.groups, ref] };
-export const removeGroup = (spec: ReportSpec, i: number): ReportSpec => ({ ...spec, groups: spec.groups.filter((_, k) => k !== i) });
+/** A group off by its place; the last one gone ends Summary only too (a summary needs a group: the API refuses it). */
+export const removeGroup = (spec: ReportSpec, i: number): ReportSpec => {
+  const groups = spec.groups.filter((_, k) => k !== i);
+  return { ...spec, groups, summaryOnly: groups.length ? spec.summaryOnly : false };
+};
 
 /** Whether section `k` is in the file. */
 export function sectionOn(spec: ReportSpec, k: SectionKey): boolean {

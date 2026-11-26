@@ -219,7 +219,7 @@ export function ReportCanvas(p: Props) {
         extra={!readOnly && <Button type="button" variant="ghost" size="sm" onClick={() => change(dataOnly, "Data only: just the rows, nothing above or below")}>Data only</Button>} />
       {flat && <Notice tone="info">{fmt === "csv" ? "CSV holds the rows: the header block's lines come first, the footer's text last." : "Every line is the columns side by side at their widths; set a column's width and padding on the right."}</Notice>}
       <RowsBar spec={spec} change={change} fields={fields} readOnly={readOnly} count={data ? data.rows : null} date={p.date} />
-      {preview.error && <Notice tone="warn">The preview didn&apos;t load: {preview.error}</Notice>}
+      {preview.error && <Notice tone="warn">{data ? <>The preview didn&apos;t update, so it still shows the report before your last change: {preview.error}</> : <>The preview didn&apos;t load: {preview.error}</>}</Notice>}
       {(data?.problems ?? []).filter((x) => !x.columnId).map((x) => <Notice key={x.message} tone="warn">{x.message}</Notice>)}
       {fmt === "pdf" ? <div className="min-w-0 rounded-sm border border-line-strong bg-card p-card shadow-xs md:p-6">{body}</div> : body}
     </div>

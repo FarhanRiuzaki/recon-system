@@ -43,6 +43,14 @@ describe("groups, sections, format", () => {
     expect(s.groups.length).toBe(3);
     expect(removeGroup(s, 0).groups).toEqual(["a:attrs.x", "a:attrs.y"]);
   });
+  it("removing the last group also ends Summary only, so the draft stays valid and the preview drops the grouping (owner 26 Nov)", () => {
+    const s = toggleSummary(addGroup(emptySpec(), "recon:status"));
+    expect(s.summaryOnly).toBe(true);
+    const r = removeGroup(s, 0);
+    expect(r.groups).toEqual([]);
+    expect(r.summaryOnly).toBe(false);
+    expect(draftProblem(r)).toBeNull();
+  });
   it("each section toggles; Data only turns every one off with the totals", () => {
     const e = emptySpec();
     expect(toggleSection(e, "title").sections.title.on).toBe(false);
