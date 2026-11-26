@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  ActionCard, ActionMenu, Avatar, DropZone, FieldList, FormatExample, Inspector, InspectorSection, ToggleChips, AvatarStack, BlockedButton, Breadcrumb, CategoryChip, Checkbox, ConfirmActionDialog, CountBadge, EmptyState, ErrorState, Field, PasswordChecks,
+  ActionCard, ActionMenu, Avatar, DropZone, FieldList, FormatExample, Inspector, InspectorSection, SwitchRow, ToggleChips, AvatarStack, BlockedButton, Breadcrumb, CategoryChip, Checkbox, ConfirmActionDialog, CountBadge, EmptyState, ErrorState, Field, PasswordChecks,
   EditorRow, Kbd, LiveCountBadge, Meter, NavigationPreview, PageZone, Panel, RouteTabs, SecretOnceDialog, Spec, StatusChip, StepItem, Stepper, TickMeter, type IndicatorStep,
 } from "@starterkit/ui/ds";
 import { HEALTH, type Health, toStatusTone } from "@starterkit/ui/lib/status";
@@ -240,7 +240,7 @@ function DesignerBlocksSample() {
         <ToggleChips label="In the file" items={[{ key: "title", label: "Title", on: on.title }, { key: "header", label: "Header block", on: on.header }, { key: "footer", label: "Footer", on: on.footer }]}
           onToggle={(k) => setOn((x) => ({ ...x, [k]: !x[k] }))} />
         <DropZone active={false} label="Group by"><span>drag a field here</span></DropZone>
-        <Inspector title="Column" meta="3 of 6"><InspectorSection title="Format"><FormatExample items={["(1.500)", "98.000.000"]} /></InspectorSection></Inspector>
+        <Inspector title="Column" meta="3 of 6"><InspectorSection title="Format"><FormatExample items={["(1.500)", "98.000.000"]} /><SwitchRow label="Page numbers" description="In a PDF only." checked={on.footer} onChange={() => setOn((x) => ({ ...x, footer: !x.footer }))} /></InspectorSection></Inspector>
       </div>
     </Panel>
   );

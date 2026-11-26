@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { DropZone } from "./drop-zone";
 import { FieldList, TypeBadge } from "./field-list";
 import { FormatExample } from "./format-example";
-import { Inspector, InspectorSection } from "./inspector";
+import { Inspector, InspectorSection, SwitchRow } from "./inspector";
 import { ToggleChips } from "./toggle-chips";
 
 const groups = [{ label: "Side A · KSEI file", fields: [{ ref: "a:account_ref", label: "Account", type: "text" as const, customer: true }, { ref: "a:amount_minor", label: "Amount", type: "number" as const, customer: false, used: true }] }];
@@ -24,6 +24,17 @@ describe("FieldList", () => {
   });
   it("TypeBadge per type", () => {
     expect(["text", "number", "date", "status", "formula"].map((t) => renderToStaticMarkup(h(TypeBadge, { type: t as never })).replace(/<[^>]+>/g, ""))).toEqual(["Abc", "123", "Day", "●", "ƒx"]);
+  });
+});
+
+describe("SwitchRow", () => {
+  it("a visible label beside a switch named by it, the description tied to it, disabled when asked", () => {
+    const out = renderToStaticMarkup(h(SwitchRow, { label: "Make it after every run", description: "Each run of the recon makes a file.", checked: true, onChange: () => {} }));
+    expect(out).toMatch(/<label[^>]*>.*>Make it after every run<.*role="switch" aria-checked="true" aria-label="Make it after every run"/);
+    const id = /aria-describedby="([^"]+)"/.exec(out)![1]!;
+    expect(out).toContain(`id="${id}"`);
+    expect(out).toContain("Each run of the recon makes a file.");
+    expect(renderToStaticMarkup(h(SwitchRow, { label: "x", checked: false, onChange: () => {}, disabled: true }))).toMatch(/role="switch"[^>]*disabled=""/);
   });
 });
 

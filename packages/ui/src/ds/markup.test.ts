@@ -39,6 +39,14 @@ describe("Panel (tray + card)", () => {
     const out = html(h(Panel, { title: "Users", description: "Select rows", children: "x" }));
     expect(out).toMatch(/<p class="min-w-0 grow basis-48 text-body-sm text-fg-3 max-md:order-last max-md:basis-full"><span aria-hidden="true" class="mr-2 text-fg-4 max-md:hidden">·<\/span>Select rows<\/p>/);
   });
+  it("collapsible: below desktop a Show/Hide button folds the card (CSS, one DOM); from xl the card always shows", () => {
+    const closed = html(h(Panel, { title: "Data", collapsible: { open: false, onOpenChange: () => {}, what: "fields" }, children: "x" }));
+    expect(closed).toMatch(/<button[^>]*class="[^"]*xl:hidden"[^>]*aria-expanded="false">Show fields/);
+    expect(closed).toMatch(/bg-card p-card max-xl:hidden">x</);
+    const open = html(h(Panel, { title: "Data", collapsible: { open: true, onOpenChange: () => {}, what: "fields" }, children: "x" }));
+    expect(open).toMatch(/aria-expanded="true".*Hide fields/);
+    expect(open).not.toContain("max-xl:hidden");
+  });
   it("tone quiet (history): no tray fill, the title in fg-2, the card unchanged", () => {
     const out = html(h(Panel, { title: "Run history", tone: "quiet", children: "x" }));
     const tray = /^<section class="([^"]*)"/.exec(out)![1]!.split(" ");

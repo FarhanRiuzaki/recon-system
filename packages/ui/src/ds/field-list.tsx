@@ -6,6 +6,7 @@ import { Button } from "../ui/button";
 import { Icon } from "../ui/icon";
 import { AddIcon, SearchIcon } from "../ui/icons";
 import { Input } from "../ui/input";
+import { ScrollFade } from "./scroll-fade";
 
 export type FieldType = "text" | "number" | "date" | "status" | "formula";
 export type ListedField = { ref: string; label: string; type: FieldType; customer: boolean; used?: boolean };
@@ -21,7 +22,7 @@ const BADGE: Record<FieldType, { text: string; cls: string }> = {
 /** A field's type at a glance (designer Data pane, column headers): Abc, 123, Day, ● (a status), ƒx (a formula). */
 export function TypeBadge({ type, className }: { type: FieldType; className?: string }) {
   const b = BADGE[type];
-  return <span aria-hidden="true" className={cn("grid size-5 shrink-0 place-items-center rounded-sm font-mono text-caption font-semibold leading-none", b.cls, className)}>{b.text}</span>;
+  return <span aria-hidden="true" className={cn("inline-grid h-5 min-w-5 shrink-0 place-items-center rounded-sm px-0.5 font-mono text-caption font-semibold leading-none", b.cls, className)}>{b.text}</span>;
 }
 
 /**
@@ -36,13 +37,15 @@ export function FieldList({ groups, query, onQuery, onAdd, wrap = (_, row) => ro
   const q = query.trim().toLowerCase();
   const shown = groups.map((g) => ({ ...g, fields: g.fields.filter((f) => !q || f.label.toLowerCase().includes(q) || f.ref.toLowerCase().includes(q)) })).filter((g) => g.fields.length);
   return (
-    <div className="grid gap-2">
+    // one column that may shrink (grid-cols-1 = minmax(0, 1fr)): the search box and each row's + stay inside the pane
+    <div className="grid min-w-0 grid-cols-1 gap-2">
       <div className="relative">
         <Icon icon={SearchIcon} className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-fg-3" />
         <Input aria-label="Search fields" placeholder="Search fields" className="pl-8" value={query} onChange={(e) => onQuery(e.target.value)} />
       </div>
+      <ScrollFade focusable aria-label="Fields" className="grid max-h-112 grid-cols-1 content-start gap-0.5 pr-1">
       {shown.map((g) => (
-        <section key={g.label} className="grid gap-0.5">
+        <section key={g.label} className="grid min-w-0 grid-cols-1 gap-0.5">
           <h3 className="mt-2 px-1 text-caption font-semibold tracking-wide text-fg-3 uppercase">{g.label}</h3>
           {g.fields.map((f) => <div key={f.ref}>{wrap(f, (
             <div className="group flex min-h-8 items-center gap-2 rounded-sm border border-transparent px-2 py-1 hover:border-line hover:bg-inset">
@@ -56,6 +59,7 @@ export function FieldList({ groups, query, onQuery, onAdd, wrap = (_, row) => ro
           ))}</div>)}
         </section>
       ))}
+      </ScrollFade>
       {!shown.length && <p className="px-1 text-body-sm text-fg-3">{q ? `No field matches “${query.trim()}”.` : "No fields yet."}</p>}
     </div>
   );

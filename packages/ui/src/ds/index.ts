@@ -83,4 +83,4 @@ export { FieldList, TypeBadge, type FieldType, type ListedField } from "./field-
 export { DropZone } from "./drop-zone";
 export { ToggleChips } from "./toggle-chips";
 export { FormatExample } from "./format-example";
-export { Inspector, InspectorSection } from "./inspector";
+export { Inspector, InspectorSection, SwitchRow } from "./inspector";

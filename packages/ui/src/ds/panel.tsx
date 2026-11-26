@@ -1,7 +1,9 @@
 "use client";
 
 import { createContext, type ReactNode, useContext } from "react";
+import { Button } from "../ui/button";
 import { Icon, type IconData } from "../ui/icon";
+import { ChevronDownIcon } from "../ui/icons";
 import { cn } from "../lib/cn";
 import { CardSurface } from "./card-surface";
 import { CountBadge } from "./badges";
@@ -23,15 +25,25 @@ import { type LegendItem, StatusLegend } from "./status-legend";
  *   (the only place a status legend is rendered).
  * - `toolbar`: a list's search and filters (`Toolbar`) on the title row, right of "Users 51" (ui-standard §1 item 4);
  *   it wraps under the title when the row is narrow, and the description moves to its own line under them.
+ * - `collapsible`: below desktop (xl) a "Show <what>" / "Hide <what>" button folds the card away, so a side pane
+ *   stacks above or below the main one without pushing it down; from xl the card always shows (CSS, one DOM).
  */
 /** The heading a Panel titles itself with: h2, or h3 inside a PageZone (whose title is the h2). */
 export const PanelHeading = createContext<"h2" | "h3">("h2");
 
-export function Panel({ title, description, actions, children, flush, className, icon, count, footnote, variant = "tray", tone, cards, bodyClassName, legend, toolbar }: {
+export function Panel({ title, description, actions, children, flush, className, icon, count, footnote, variant = "tray", tone, cards, bodyClassName, legend, toolbar, collapsible }: {
   title?: ReactNode; description?: ReactNode; actions?: ReactNode; children: ReactNode; flush?: boolean; className?: string;
   icon?: IconData; count?: number | string; footnote?: ReactNode; variant?: "tray" | "flat"; cards?: boolean; bodyClassName?: string;
   legend?: readonly LegendItem[]; toolbar?: ReactNode; tone?: "quiet";
+  collapsible?: { open: boolean; onOpenChange: (open: boolean) => void; what: string };
 }) {
+  const fold = collapsible && (
+    <Button type="button" variant="ghost" size="sm" aria-expanded={collapsible.open} className="xl:hidden" onClick={() => collapsible.onOpenChange(!collapsible.open)}>
+      {collapsible.open ? "Hide" : "Show"} {collapsible.what}<Icon icon={ChevronDownIcon} className={cn("size-4 transition-transform duration-(--dur-fast)", collapsible.open && "rotate-180")} />
+    </Button>
+  );
+  if (collapsible && !collapsible.open) bodyClassName = cn(bodyClassName, "max-xl:hidden");
+  if (fold) actions = <>{actions}{fold}</>;
   const quiet = tone === "quiet";
   const level = useContext(PanelHeading);
   const titleClass = cn("text-title-3", quiet ? "text-fg-2" : "text-fg");
