@@ -17,6 +17,8 @@ import { Icon } from "@starterkit/ui/ui/icon";
 import { ArrowRightIcon, ColumnChartIcon, ComponentsIcon, LogIcon, SpinnerIcon, TimeIcon } from "@starterkit/ui/ui/icons";
 import type { Page } from "@starterkit/shared/contracts/common";
 import type { ReconDto, ReconRunDto } from "@starterkit/shared/contracts/recon";
+import { mayDo } from "@starterkit/shared/spaces";
+import { LazyConfirmActionDialog } from "@/components/lazy-confirm";
 import { StateChip } from "@/components/state-chip";
 import { api, errorText } from "@/lib/client/api";
 import { ENGINE_KEY } from "@/lib/shared/queries";
@@ -26,9 +28,9 @@ import { nextRunText, scheduleLine, totalsOfDay } from "./live-model";
 import { RunControl } from "./run-control";
 import { directionText, type Fields, settingsFacts } from "./spec-model";
 import { recordFields } from "@starterkit/shared/recon";
-import { rangeText, rateText, runChip, runRowChips } from "./run-model";
+import { rangeText, rateText, rollbackCover, runChip, runRowChips } from "./run-model";
 import { at } from "./recon-text";
-import { reconApi, reconRunHref, useReconTrend, useSideSource } from "./use-recons";
+import { reconApi, reconRunHref, useReconTrend, useRollbackRun, useSideSource, useSpaceRoles } from "./use-recons";
 
 const day = (d: string) => formatDate(Date.parse(`${d}T00:00:00+07:00`));
 
@@ -92,6 +94,10 @@ const HISTORY_ROWS = 5;
  */
 function RunHistory({ spaceId, id }: { spaceId: string; id: string }) {
   const [all, setAll] = useState(false);
+  // a space admin rolls back from a run (owner, 26 Nov): it and every live run after it, then their dates run again
+  const admin = mayDo(useSpaceRoles(spaceId), "rollbackRun");
+  const undo = useRollbackRun(spaceId, id);
+  const [asking, setAsking] = useState<ReconRunDto | null>(null);
   const firstQ = reconRunsFirst(spaceId, id);
   const first = useQuery({ queryKey: firstQ.key, queryFn: () => api<Page<ReconRunDto>>(firstQ.url), refetchInterval: 30_000 });
   const q = useInfiniteQuery({
@@ -114,6 +120,7 @@ function RunHistory({ spaceId, id }: { spaceId: string; id: string }) {
   const loaded = [...(f?.items ?? []), ...(q.data?.pages.flatMap((p) => p.items) ?? [])].filter((r, i, list) => list.findIndex((x) => x.id === r.id) === i);
   const runs = all ? loaded : loaded.slice(0, HISTORY_ROWS);
   const more = !all && (f?.total ?? 0) > HISTORY_ROWS;
+  const cover = asking ? rollbackCover(asking, loaded) : null;
   return (
     <Panel flush tone="quiet" icon={LogIcon} title="Run history" count={f?.total} description="Newest first · scheduled, manual and simulations" className="flex min-h-72 flex-col" bodyClassName="flex flex-1 flex-col"
       actions={more ? <Button type="button" variant="ghost" size="sm" onClick={() => setAll(true)}>Show all</Button> : undefined}>
@@ -124,17 +131,26 @@ function RunHistory({ spaceId, id }: { spaceId: string; id: string }) {
             {first.isSuccess && !runs.length && <li><EmptyState icon={LogIcon} title="No runs yet" description="Each run lists here once the schedule or someone starts one." /></li>}
             {runs.map((r) => {
               const { chip, mode } = runRowChips(r);
+              const offers = admin && !!rollbackCover(r, loaded);
               return (
                 <li key={r.id} className="border-b border-line last:border-b-0">
                   <Link href={reconRunHref(spaceId, id, r.id)} className="grid gap-1 px-4 py-2.5 hover:bg-tray focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary">
                     <span className="flex flex-wrap items-center gap-2">
                       <StateChip chip={chip} />
                       {mode && <CategoryChip slot="neutral" label={mode} />}
+                      {r.rolledBackAt && <CategoryChip slot="neutral" label="Rolled back" />}
                       <span className="text-body-sm text-fg">{rangeText(r.from, r.to)}</span>
                       <span className="ml-auto font-mono text-caption text-fg-3 tabular">{at(r.startedAt)}</span>
                     </span>
                     <span className="text-body-sm text-fg-2">{r.status === "failed" && r.error ? r.error : countsOf(r)}</span>
+                    {r.rolledBackAt && <span className="text-caption text-fg-3">Rolled back {at(r.rolledBackAt)}: what it matched and broke was undone.</span>}
+                    {r.rollbackOf && <span className="text-caption text-fg-3">Ran again after a rollback: undid the runs first, then matched their dates.</span>}
                   </Link>
+                  {offers && (
+                    <div className="px-4 pb-2.5">
+                      <Button type="button" variant="secondary" size="sm" onClick={() => setAsking(r)}>Roll back from here</Button>
+                    </div>
+                  )}
                 </li>
               );
             })}
@@ -142,6 +158,19 @@ function RunHistory({ spaceId, id }: { spaceId: string; id: string }) {
           </ol>
         </ScrollFade></div>
       </div>
+      {asking && cover && (
+        <LazyConfirmActionDialog open onOpenChange={(o) => { if (!o) setAsking(null); }} auditFields={false} reasons={[]} destructive
+          title="Roll back runs"
+          description={`The run of ${at(asking.startedAt)} and every run after it lose what they matched and the unmatch items they made: those items wait again, and whoever had one of them no longer does. A rerun with the published version, queued now, matches ${rangeText(cover.from, cover.to)} again. Use it after a run matched with a version or data that was wrong.`}
+          impact={[
+            `${formatNumber(cover.runs)} ${cover.runs === 1 ? "run" : "runs"} rolled back`,
+            `${rangeText(cover.from, cover.to)} run again`,
+            "Matches a person made, write-offs and postings stay",
+            "A closed business date, or a change waiting for a decision, refuses the rollback; nothing changes then",
+          ]}
+          actionLabel="Roll back runs"
+          onConfirm={async () => { await undo.mutateAsync(asking.id); setAsking(null); }} />
+      )}
     </Panel>
   );
 }

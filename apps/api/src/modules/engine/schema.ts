@@ -62,6 +62,14 @@ export const reconRuns = pgTable("recon_runs", {
    */
   seen: jsonb("seen"),
   baselineOf: uuid("baseline_of"),
+  /**
+   * A rerun asked for by a rollback (POST …/runs/:runId/rollback): the run it rolls back first, with every live run
+   * after it, before it runs (rollback.ts). No foreign key: runs go only with their config.
+   */
+  rollbackOf: uuid("rollback_of"),
+  /** When a rollback undid what this run matched and broke, and the rerun that did it (null while it stands). */
+  rolledBackAt: timestamp("rolled_back_at", { withTimezone: true }),
+  rolledBackBy: uuid("rolled_back_by"),
   /** The job that runs it (pg-boss id; null = run in process): a run whose job is over while it is not is failed (reaper). */
   jobId: uuid("job_id"),
   startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
@@ -118,6 +126,11 @@ export const reconItems = pgTable("recon_items", {
   stateAt: timestamp("state_at", { withTimezone: true }),
   version: integer("version").notNull().default(0),
   simRunId: uuid("sim_run_id"),
+  /**
+   * The run whose pass or grace last broke it (or made a one-way side-B item not required); null for a day close's, and
+   * for breaks before 0077. A rollback of that run puts it back to open (rollback.ts).
+   */
+  breakRunId: uuid("break_run_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   primaryKey({ name: "recon_items_pkey", columns: [t.spaceId, t.id, t.businessDate] }),
@@ -135,6 +148,8 @@ export const reconItems = pgTable("recon_items", {
   index("recon_items_break_queue").on(t.spaceId, t.assigneeId, t.businessDate).where(sql`${t.status} = 'break' and ${t.simRunId} is null`),
   // unqualified: a month partition copies the check, and a table-qualified column fails there
   check("recon_items_break_state_check", sql`break_state is null or break_state in ('assigned', 'investigating', 'pending_external', 'proposed_resolution', 'pending_approval', 'resolved')`),
+  // a rollback's breaks: the items a run broke that are still its breaks (rollback.ts)
+  index("recon_items_break_run").on(t.spaceId, t.configId, t.breakRunId).where(sql`${t.breakRunId} is not null and ${t.status} in ('break', 'not_required')`),
   // a simulation's rows, for the delete of an old simulation (cascade) without a scan of every partition
   index("recon_items_sim_run").on(t.spaceId, t.simRunId).where(sql`${t.simRunId} is not null`),
   foreignKey({ name: "recon_items_config_fkey", columns: [t.spaceId, t.configId], foreignColumns: [reconConfigs.spaceId, reconConfigs.id] }).onDelete("cascade"),
@@ -212,7 +227,7 @@ export const matchGroups = pgTable("match_groups", {
   evidence: jsonb("evidence").notNull(),
   /** Who reversed it: the run that found a member's record replaced (reverse_reason source_changed), later an unmatch's user. */
   reversedBy: uuid("reversed_by"),
-  /** Why: `source_changed` (a mutable source replaced a member's record, spec §8, REC-FUT-15); Plan 5 adds unmatch. */
+  /** Why: `source_changed` (a mutable source replaced a member's record, spec §8, REC-FUT-15), `unmatch` (a person, Plan 5), `rolled_back` (a run rolled back: reversed_by = the rerun that did it). */
   reverseReason: text("reverse_reason"),
   reversedAt: timestamp("reversed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

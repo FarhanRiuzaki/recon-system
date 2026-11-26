@@ -298,6 +298,18 @@ export function runRowChips(r: Pick<ReconRunDto, "status" | "mode">): { chip: Ch
   const chip = runChip(r);
   return { chip, mode: chip.label === "Simulated" ? null : MODE[r.mode] };
 }
+/**
+ * What rolling back `r` covers (rollback.ts in the API): it and every live run after it not rolled back yet, from
+ * `runs` (the history, newest first, so the later ones are loaded), with the dates their rerun runs again; null when
+ * `r` offers no rollback (a simulation, a run not ended, one rolled back already).
+ */
+export function rollbackCover(r: Pick<ReconRunDto, "id" | "mode" | "status" | "rolledBackAt">, runs: readonly Pick<ReconRunDto, "id" | "mode" | "rolledBackAt" | "from" | "to">[]): { runs: number; from: string; to: string } | null {
+  if (r.mode === "simulation" || r.rolledBackAt || (r.status !== "succeeded" && r.status !== "failed")) return null;
+  const at = runs.findIndex((x) => x.id === r.id);
+  const covered = runs.slice(0, at + 1).filter((x) => x.mode !== "simulation" && !x.rolledBackAt);
+  if (at < 0 || !covered.length) return null;
+  return { runs: covered.length, from: covered.reduce((d, x) => (x.from < d ? x.from : d), covered[0]!.from), to: covered.reduce((d, x) => (x.to > d ? x.to : d), covered[0]!.to) };
+}
 export function stoppedLine(r: { mode: string; error: string | null }): string {
   return `The ${r.mode === "simulation" ? "simulation" : "run"} stopped: ${lowerFirst(r.error ?? "it ended before it finished. Run it again.")}`;
 }

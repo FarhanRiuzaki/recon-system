@@ -473,6 +473,10 @@ export const ReconRunDto = z.object({
   error: z.string().nullable(),
   startedAt: z.string(),
   finishedAt: z.string().nullable(),
+  /** A rollback's rerun: the run it rolled back (with every live run after it) before it ran; null otherwise. */
+  rollbackOf: z.string().nullable(),
+  /** When a rollback undid what this run matched and broke (null while it stands). */
+  rolledBackAt: z.string().nullable(),
   baseline: z.object({ runId: z.string(), versionId: z.string(), version: z.number().int() }).nullable(),
   changes: SimChangeCounts.nullable(),
   /** GET …/runs/{runId} only (a list answers null). */
@@ -490,6 +494,13 @@ export const ReconRunDto = z.object({
   projection: RunProjection.nullable(),
 });
 export type ReconRunDto = z.infer<typeof ReconRunDto>;
+
+/**
+ * POST …/runs/{runId}/rollback (no body): `runs` = the live runs it rolls back (this one and every one after it), `rerun`
+ * = the rerun of their dates, queued, whose job rolls them back first.
+ */
+export const RollbackRunDto = z.object({ runs: z.number().int(), rerun: ReconRunDto });
+export type RollbackRunDto = z.infer<typeof RollbackRunDto>;
 
 /** GET …/recons/{configId}/runs: newest first; `mode` and `versionId` narrow it (the builder reads a draft's simulations). */
 export const ReconRunListQuery = ListQuery.omit({ q: true }).extend({

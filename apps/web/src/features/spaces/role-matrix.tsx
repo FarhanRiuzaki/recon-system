@@ -34,6 +34,7 @@ export const ROLE_MATRIX: readonly { group: string; rows: ReturnType<typeof row>
     work("Take an item and set its state"),
     row({ action: "Assign items to someone", does: "assign" }),
     row({ action: "Run a recon now", does: "runRecon" }),
+    row({ action: "Roll back a run", does: "rollbackRun" }),
     work("Match"), work("Request posting"), work("Force match"), work("Write-off"), work("Close without a match"), work("Undo match"),
     work("Work an item from Explain in operation result"),
     row({ action: "Approve requests", approves: "chain" }),

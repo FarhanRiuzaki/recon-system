@@ -160,6 +160,7 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
     <div className="grid gap-section">
       <PageHeader title={title} trail={trail}
         description={`${recon.name} · ${run.mode === "simulation" ? `Draft v${run.version}` : `Version ${run.version}`} · ${rangeText(run.from, run.to)}${run.mode === "simulation" ? " · not stored" : ""}`} />
+      {run.rolledBackAt && <Notice>Rolled back {formatDateTime(Date.parse(run.rolledBackAt))}: what this run matched and broke was undone, and a rerun matched its dates again. Its numbers are what it did then.</Notice>}
       <RunSummary run={run} spec={spec} labels={labels} stalled={rq.stalled} />
       <RunReports spaceId={spaceId} runId={runId} />
       {t.staleError && <Notice tone="warn" live>Couldn&apos;t refresh the items; showing the rows loaded before. {errorText(t.staleError)}</Notice>}

@@ -15,6 +15,10 @@ describe("activitySentence", () => {
     expect(activitySentence(e("recon.version_reject", { version: 2, comment: "Add pass 3" }))).toBe("Dimas Arya sent version 2 back: “Add pass 3”");
     expect(activitySentence(e("recon.discard", null, { code: "x", name: "X" }))).toBe("Dimas Arya deleted the draft recon.");
     expect(activitySentence(e("recon.run", { runId: "r", version: 1, from: "2026-11-02", to: "2026-11-05" }))).toBe("Dimas Arya ran version 1 for 2–5 Nov 2026.");
+    expect(activitySentence(e("recon.run_rollback", { runId: "r", startedAt: "2026-11-02T01:00:00.000Z", runs: 1, rerunId: "x", version: 3, from: "2026-11-02", to: "2026-11-02" })))
+      .toBe("Dimas Arya rolled back a run; version 3 runs again for 2 Nov 2026.");
+    expect(activitySentence(e("recon.run_rollback", { runId: "r", startedAt: "2026-11-02T01:00:00.000Z", runs: 4, rerunId: "x", version: 3, from: "2026-11-02", to: "2026-11-05" })))
+      .toBe("Dimas Arya rolled back a run and the 3 after it; version 3 runs again for 2–5 Nov 2026.");
     expect(activitySentence(e("recon.simulate", { runId: "r", version: 2, specHash: "h", from: "2026-11-02", to: "2026-11-02" }))).toBe("Dimas Arya simulated draft v2 for 2 Nov 2026.");
     expect(activitySentence(e("recon.result_columns", { columns: [] }, { columns: [] }))).toBe("Dimas Arya changed the Operation result columns.");
   });

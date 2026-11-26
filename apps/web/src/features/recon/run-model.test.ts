@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { PassSpec, ReconSpec } from "@starterkit/shared/contracts/recon";
-import { amountText, connectorText, countLine, dayPasses, dayTotals, differenceText, itemsText, passOutcome, pastClose, projectionText, rangeText, reasonCount, recordDates, replayEnd, replayGap, suggestedReplay, runDays, runTotals, sidesText, simView, doneChip, standingTotals, breakCounts, carryOverText, counterpartWindow, lonePairText, pairDifference, reasonOptions, breakPair, breaksOf, breaksText, runLine, runRowChips, scopeCaption, readIn, runCurrency } from "./run-model";
+import { amountText, connectorText, countLine, dayPasses, dayTotals, differenceText, itemsText, passOutcome, pastClose, projectionText, rangeText, reasonCount, recordDates, replayEnd, replayGap, suggestedReplay, runDays, runTotals, sidesText, simView, doneChip, standingTotals, breakCounts, carryOverText, counterpartWindow, lonePairText, pairDifference, reasonOptions, breakPair, breaksOf, breaksText, runLine, runRowChips, rollbackCover, scopeCaption, readIn, runCurrency } from "./run-model";
 
 // The Plan 3 gate (docs/recon/source-test-db.md "Kunci jawaban"): pass 1 exact with duplicates, passes 2 and 3 suggest.
 const pass = (no: number, accept: "auto" | "suggest", blocking: string[] = ["ext_ref"]): PassSpec =>
@@ -270,6 +270,24 @@ describe("a run history row's chips (review: Simulated + Simulation on one row)"
     expect(runRowChips({ status: "failed", mode: "simulation" }).mode).toBe("Simulation");
     expect(runRowChips({ status: "succeeded", mode: "daily" })).toEqual({ chip: { health: "healthy", label: "Done" }, mode: "Scheduled" });
     expect(runRowChips({ status: "queued", mode: "rerun" })).toEqual({ chip: { health: "progress", label: "Queued" }, mode: "Rerun" });
+  });
+});
+
+describe("what a rollback from a run covers (owner, 26 Nov: roll back from the run history)", () => {
+  const r = (id: string, mode: "manual" | "tick" | "rerun" | "simulation", from: string, to = from, x: { status?: "succeeded" | "failed" | "running"; rolledBackAt?: string } = {}) =>
+    ({ id, mode, from, to, status: x.status ?? ("succeeded" as const), rolledBackAt: x.rolledBackAt ?? null });
+  // newest first, as the history lists them
+  const runs = [r("e", "tick", "2026-11-05"), r("d", "simulation", "2026-11-09"), r("c", "rerun", "2026-11-03", "2026-11-04"), r("b", "manual", "2026-11-01", "2026-11-02", { rolledBackAt: "2026-11-03T00:00:00Z" }), r("a", "manual", "2026-11-02")];
+  it("the run and every live run after it, not a simulation nor one rolled back already, and their dates", () => {
+    expect(rollbackCover(runs[4]!, runs)).toEqual({ runs: 3, from: "2026-11-02", to: "2026-11-05" });
+    expect(rollbackCover(runs[0]!, runs)).toEqual({ runs: 1, from: "2026-11-05", to: "2026-11-05" });
+    expect(rollbackCover(r("f", "manual", "2026-11-01", "2026-11-01", { status: "failed" }), [r("f", "manual", "2026-11-01")])).toEqual({ runs: 1, from: "2026-11-01", to: "2026-11-01" });
+  });
+  it("none for a simulation, a run rolled back already, one not ended, or one not loaded", () => {
+    expect(rollbackCover(runs[1]!, runs)).toBeNull();
+    expect(rollbackCover(runs[3]!, runs)).toBeNull();
+    expect(rollbackCover(r("g", "manual", "2026-11-01", "2026-11-01", { status: "running" }), runs)).toBeNull();
+    expect(rollbackCover(r("h", "manual", "2026-11-01"), runs)).toBeNull();
   });
 });
 

@@ -15,7 +15,7 @@ describe("RoleMatrix: 7 roles × the actions the API guards (SPACE_ACTION)", () 
   it("the actions in three groups, a cell per role", () => {
     expect(ROLE_MATRIX.map((g) => [g.group, g.rows.map((r) => r.action)])).toEqual([
       ["Daily work", ["View recons, today, unmatch items and operation result", "View postings and posting groups", "View a source's files, pulls and records",
-        "View the dashboard of the spaces you are in", "See the sidebar counts", "See and download inbox files", "Upload a file to the inbox", "Take an item and set its state", "Assign items to someone", "Run a recon now",
+        "View the dashboard of the spaces you are in", "See the sidebar counts", "See and download inbox files", "Upload a file to the inbox", "Take an item and set its state", "Assign items to someone", "Run a recon now", "Roll back a run",
         "Match", "Request posting", "Force match", "Write-off", "Close without a match", "Undo match", "Work an item from Explain in operation result",
         "Approve requests", "Sign off a day", "See and download reports", "Make a report for a date range", "Download a report with full customer data"]],
       ["Setup", ["Set up recons", "Run a simulation", "Preview a posting request", "Choose operation result columns", "Delete a recon",
@@ -41,6 +41,7 @@ describe("RoleMatrix: 7 roles × the actions the API guards (SPACE_ACTION)", () 
     const worker = [D, N, N, N, D, D, N];
     for (const a of ["Match", "Request posting", "Force match", "Write-off", "Close without a match", "Undo match", "Take an item and set its state", "Work an item from Explain in operation result"]) expect(row(a), a).toEqual(worker);
     expect(row("Run a recon now")).toEqual([D, N, D, N, D, N, N]);
+    expect(row("Roll back a run")).toEqual([D, N, N, N, N, N, N]);
     expect(row("Choose operation result columns")).toEqual([D, N, D, N, N, N, N]);
     expect(row("Set up recons")).toEqual([N, N, D, A, N, N, N]);
     expect(row("Set up sources")).toEqual([N, D, D, A, N, N, N]);

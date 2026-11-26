@@ -16,8 +16,8 @@ export const breakReason = (p: PassSpec): string =>
   p.blocking.length || p.predicates.some((q) => q.op === "eq" || q.op === "eq_normalized") ? "Duplicate" : "Ambiguous";
 
 /**
- * Breaks the items of CTE `t` (id, v, bd) as pass `p`'s (`break_pass`; a one-way recon's side-B items become not required
- * instead, DEC-062); answers the items broken, those of side A, and their
+ * Breaks the items of CTE `t` (id, v, bd) as pass `p`'s (`break_pass`, and the run in `break_run_id`, which a rollback of
+ * it reads; a one-way recon's side-B items become not required instead, DEC-062); answers the items broken, those of side A, and their
  * distinct references (the records' ext_ref: a Duplicate counts keys, "10 references, 30 items"). Every item it breaks
  * was open or not required, a new break: on a closed date (a carried-over one) it adds to that date's stored open
  * counter, as a sweep's breaks do (REC-FUT-17); no sweep sees it later, it is a break already.
@@ -28,7 +28,7 @@ const breakItems = (c: StepCtx, p: PassSpec): SQL => {
     ? sql`status = case when i.side = 'b' then 'not_required' else 'break' end, break_reason = case when i.side = 'b' then null else ${breakReason(p)} end,
       break_pass = case when i.side = 'b' then i.break_pass else ${p.no} end`
     : sql`status = 'break', break_reason = ${breakReason(p)}, break_pass = ${p.no}`;
-  return sql`all_up as (update ${reconItems} i set ${set}, version = i.version + 1
+  return sql`all_up as (update ${reconItems} i set ${set}, break_run_id = ${c.runId}::uuid, version = i.version + 1
     from t x where i.space_id = ${c.spaceId} and i.id = x.id and i.business_date = x.bd and i.status in ('open', 'not_required') and i.version = x.v returning i.record_id, i.business_date, i.side, i.status),
   up as (select * from all_up where status = 'break')${c.simRunId === null ? sql`,
   dc as (update ${reconDays} d set counters = jsonb_build_object('open', coalesce((d.counters ->> 'open')::int, 0) + n.n,

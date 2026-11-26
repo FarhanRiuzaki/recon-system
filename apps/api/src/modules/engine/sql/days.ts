@@ -20,14 +20,15 @@ const live = (c: Pick<ClassifyCtx, "simRunId">, alias: string): SQL => (c.simRun
 
 /**
  * Breaks the items of CTE `lk` (id, v, st, bd), each with `reason`, late_match `late` and break_pass `pass` (SQL over
- * lk and k / sg; break_pass names the pass of a Duplicate, as a pass's own ambiguity breaks do). An item whose reason
+ * lk and k / sg; break_pass names the pass of a Duplicate, as a pass's own ambiguity breaks do) and break_run_id
+ * `runId` (grace: its run, which a rollback of it reads; day close: null, no run made it). An item whose reason
  * is NOT_REQUIRED (a one-way recon's side B, DEC-055) becomes not_required instead: no break reason, no work item; the
  * pool reads it by its status. Returns lk.st, lk.bd and the new status (`ns`).
  */
-const breakLocked = (c: Pick<ClassifyCtx, "spaceId">, from: SQL, reason: SQL, late: SQL, pass: SQL = sql`i.break_pass`): SQL => sql`up as (update ${reconItems} i
+const breakLocked = (c: Pick<ClassifyCtx, "spaceId">, from: SQL, reason: SQL, late: SQL, pass: SQL, runId: string | null): SQL => sql`up as (update ${reconItems} i
       set status = case when ${reason} = ${NOT_REQUIRED} then 'not_required' else 'break' end,
       break_reason = nullif(${reason}, ${NOT_REQUIRED}), late_match = ${late} and ${reason} <> ${NOT_REQUIRED},
-      break_pass = ${pass}, version = i.version + 1
+      break_pass = ${pass}, break_run_id = ${runId}::uuid, version = i.version + 1
     from ${from} where i.space_id = ${c.spaceId} and i.id = lk.id and i.business_date = lk.bd and i.status = lk.st and i.version = lk.v returning lk.st, lk.bd, i.status as ns)`;
 
 /**
@@ -52,7 +53,7 @@ export function graceSql(c: StepCtx, graceMinutes: number, carry: number): SQL {
     where i.space_id = ${c.spaceId} and i.config_id = ${c.configId} and ${live(c, "i")} and i.business_date between ${c.lo}::date and ${c.hi}::date
       and i.status = 'open' and i.id in (select id from due) for update skip locked),
   k as (${nearMissSql({ ...c, carry }, c.lo, c.hi, sql`i.id in (select id from lk)`)}),
-  ${breakLocked(c, sql`lk join k on k.item_id = lk.id`, sql`k.reason`, sql`k.reason = ${NEAR_MISS.none}`)}
+  ${breakLocked(c, sql`lk join k on k.item_id = lk.id`, sql`k.reason`, sql`k.reason = ${NEAR_MISS.none}`, sql`i.break_pass`, c.runId)}
   select (select count(*) from up)::int as n, ${datesOf("up")}`;
 }
 
@@ -82,7 +83,7 @@ export function closeDaySql(c: ClassifyCtx, lo: string, hi: string): SQL {
       and (i.status = 'open' or (i.status = 'suggested' and i.id in (select id from sg))) for update skip locked),
   k as (${nearMissSql(c, lo, hi, sql`i.id in (select id from lk)`)}),
   ${breakLocked(c, sql`lk left join k on k.item_id = lk.id left join sg on sg.id = lk.id`, sql`case when lk.st = 'open' then k.reason else sg.reason end`, sql`lk.st = 'open' and k.reason = ${NEAR_MISS.none}`,
-    sql`case when lk.st = 'suggested' and sg.reason = ${SUGGESTED_REASON.tie} then sg.pass_no else i.break_pass end`)}
+    sql`case when lk.st = 'suggested' and sg.reason = ${SUGGESTED_REASON.tie} then sg.pass_no else i.break_pass end`, null)}
   select bd::text as d, count(*) filter (where st = 'open' and ns = 'break')::int as open, count(*) filter (where st = 'suggested' and ns = 'break')::int as suggested,
     count(*) filter (where ns = 'not_required')::int as nr from up group by bd order by bd`;
 }

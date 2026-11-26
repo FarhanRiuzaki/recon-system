@@ -201,6 +201,7 @@ export const ACTION_SHAPES: Record<string, [target: string, before: string, afte
   "day.prepare": ["recon", "`{ stage }`", "`{ date, stage }` (prepared)"],
   "day.sign": ["recon", "`{ stage }`", "`{ date, stage }` (signed)"],
   "recon.run": ["recon", "–", "`{ runId, version, from, to }` (the published version run over business dates from–to)"],
+  "recon.run_rollback": ["recon", "–", "`{ runId, startedAt, runs, rerunId, version, from, to }` (the run rolled back, when it started, how many live runs from it on, and the rerun of the published version over their dates from–to)"],
   "recon.result_columns": ["recon", "`{ columns }` (null = the default columns)", "`{ columns }` (null = back to the default columns)"],
   "recon.simulate": ["recon", "–", "`{ runId, version, specHash, from, to }` (the draft simulated over business dates from–to)"],
 };

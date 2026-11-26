@@ -2,7 +2,8 @@
 // /v1/spaces/:spaceId/today and …/recons/:configId/live: the recons' current days (today.ts). Every
 // route takes the space guard without `or` (a platform admin has no data access). Roles (Plan 3 Task 3): an operator or
 // a config maker runs the published version; a config maker simulates a draft (and becomes its contributor); any role
-// reads. A request answers 202 with the run, queued; the worker runs it (jobs.ts). Query 400 → guard 401/403 → body
+// reads; a space admin rolls a run back with every live run after it (rollback.ts). A request answers 202 with the run,
+// queued; the worker runs it (jobs.ts). Query 400 → guard 401/403 → body
 // 400 → 404 → rules → change → activity (the last four in jobs.ts and service.ts).
 import { Elysia } from "elysia";
 import { AssignBreaksBody, BreakCandidateQuery, BreakListQuery, BreakStateBody, CloseBreakBody, MatchBreakBody, RequestBreakBody, TakeBreaksBody } from "@starterkit/shared/contracts/breaks";
@@ -16,7 +17,7 @@ import { assignBreaks, breakFacets, breakPage, breakSummary, setBreakState, take
 import { breakActivity, breakDetail, candidatePage, closeBreak, matchBreak, matchPair } from "./break-resolve";
 import { requestChange } from "./break-requests";
 import { signoffPage, signoffStep } from "./signoff";
-import { discardDraftVersion, requestRun, requestSimulation } from "./jobs";
+import { discardDraftVersion, requestRollback, requestRun, requestSimulation } from "./jobs";
 import { runDetail, runItemPage, runPage, simChangePage } from "./service";
 import { reconLive, reconTrend, todayDto } from "./today";
 import { navCounts } from "./nav-counts";
@@ -83,6 +84,12 @@ export const engineController = () =>
       return r;
     }, { guard: { space: SPACE_ACTION.runRecon } })
     .get("/v1/spaces/:spaceId/recons/:configId/runs/:runId", ({ ctx, params }) => runDetail(ctx, idParam(params.configId, "recon"), idParam(params.runId, "run")), { guard: { space: SPACE_ROLES } })
+    /** A run and every live run after it rolled back, then their dates run again: the rerun, queued (rollback.ts). */
+    .post("/v1/spaces/:spaceId/recons/:configId/runs/:runId/rollback", async (c) => {
+      const r = await requestRollback(c.ctx, idParam(c.params.configId, "recon"), idParam(c.params.runId, "run"));
+      c.set.status = 202;
+      return r;
+    }, { guard: { space: SPACE_ACTION.rollbackRun } })
     .get("/v1/spaces/:spaceId/recons/:configId/runs/:runId/items", ({ ctx, params, query }) =>
       runItemPage(ctx, idParam(params.configId, "recon"), idParam(params.runId, "run"), query), { query: ReconRunItemQuery, guard: { space: SPACE_ROLES } })
     .get("/v1/spaces/:spaceId/recons/:configId/runs/:runId/changes", ({ ctx, params, query }) =>

@@ -42,6 +42,7 @@ import { groupBreakSql, nearMissSql, type NearMissReason, tieBreakSql } from "./
 import { closeReplacedSql, intakeSql, reverseReplacedSql } from "./sql/intake";
 import { graceSql } from "./sql/days";
 import { analyzeSql, analyzeTableSql, runHasRecordsSql } from "./sql/runs";
+import { rollBackRuns } from "./rollback";
 import { queueDay } from "./stats";
 import { queueAfterRun } from "../reports";
 import { acceptSql, clearProposalsSql, type Dated, equalitiesOnly, fifoSql, groupAcceptSql, proposeSql, ruleSql, type SideRef, type StepCtx, tieSuggestSql } from "./sql/pass";
@@ -200,7 +201,7 @@ const emptyCounters = (spec: ReconSpec): RunCounters => ({
 });
 
 /** A run row to write: `jobId` = the job that runs it (the reaper asks pg-boss about it), `baselineOf` = see schema.ts. */
-export type NewRun = RunInput & { status: "queued" | "running"; id?: string; jobId?: string | null; baselineOf?: string | null };
+export type NewRun = RunInput & { status: "queued" | "running"; id?: string; jobId?: string | null; baselineOf?: string | null; rollbackOf?: string | null };
 
 /**
  * Writes the run row of version `versionId` (pinned with its spec hash) on `tx`; answers its id. Refused: a range
@@ -217,7 +218,7 @@ export async function createRun(tx: InTx, i: NewRun): Promise<string> {
   const id = i.id ?? Bun.randomUUIDv7();
   await tx.insert(reconRuns).values({
     id, spaceId: i.spaceId, configId: i.configId, configVersionId: i.versionId, mode: i.mode, dateFrom: from, dateTo: to, status: i.status,
-    counters: emptyCounters(ReconSpec.parse(v.spec)), specHash: v.matchingHash, jobId: i.jobId ?? null, baselineOf: i.baselineOf ?? null,
+    counters: emptyCounters(ReconSpec.parse(v.spec)), specHash: v.matchingHash, jobId: i.jobId ?? null, baselineOf: i.baselineOf ?? null, rollbackOf: i.rollbackOf ?? null,
   });
   return id;
 }
@@ -261,6 +262,20 @@ export async function execRun(on: Tx, spaceId: string, runId: string, o: { finis
       if (run.status === "queued") await tx.update(reconRuns).set({ status: "running" }).where(and(mine, eq(reconRuns.status, "queued")));
       return load(tx, spaceId, ReconSpec.parse(v.spec));
     }, on);
+    // a rollback's rerun undoes what the runs it rolls back did first (rollback.ts), before its carry over is resolved:
+    // the items it reopens are unmatch that window reads. A refusal fails the rerun with why; a second delivery skips it
+    if (run.rollbackOf) {
+      const undone = await withSpace(scope, async (tx) => {
+        await configLock(tx, configId);
+        const [r] = await tx.select({ status: reconRuns.status }).from(reconRuns).where(mine).for("update");
+        if (r?.status !== "running") return "over" as const;
+        await tx.execute(sql`select set_config('statement_timeout', ${String(passTimeoutMs(run.mode))}, true)`);
+        const changed = await rollBackRuns(tx, { ...run, rollbackOf: run.rollbackOf! });
+        for (const d of new Set(changed.flatMap((x) => x.dates?.split(",") ?? []))) await queueDay(spaceId, configId, d, tx);
+        return "done" as const;
+      }, on);
+      if (undone === "over") return null;
+    }
     // resolved once per run against its last date (so every date of a catch-up keeps the oldest unmatch in its window),
     // kept in the run's counters for always (a number of days never moves): what a run read stays what it read (blind review I2, I3)
     const kept = (run.counters as RunCounters | null)?.carry;
@@ -508,7 +523,7 @@ async function runDtos(tx: InTx, spaceId: string, rows: RunRow[]): Promise<Recon
     return {
       id: r.id, configId: r.configId, versionId: r.configVersionId, version: versions.get(r.configVersionId) ?? 0, specHash: r.specHash, mode: r.mode as RunMode, status: r.status as RunStatus,
       from: r.dateFrom, to: r.dateTo, doneThrough: r.doneThrough, counters: withoutProjection(r.counters), error: r.error,
-      startedAt: r.startedAt.toISOString(), finishedAt: iso(r.finishedAt),
+      startedAt: r.startedAt.toISOString(), finishedAt: iso(r.finishedAt), rollbackOf: r.rollbackOf, rolledBackAt: iso(r.rolledBackAt),
       baseline: b ? { runId: b.id, versionId: b.versionId, version: versions.get(b.versionId) ?? 0 } : null,
       changes: isDraftSim && r.status === "succeeded" ? { gained: n("gained"), lost: n("lost"), repaired: n("repaired"), kind: n("kind") } : null,
       days: null,

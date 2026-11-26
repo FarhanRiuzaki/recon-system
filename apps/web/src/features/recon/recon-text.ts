@@ -42,6 +42,10 @@ export function activitySentence(e: Entry): string {
     case "recon.discard": return `${who} deleted the draft recon.`;
     case "recon.version_discard": return `${who} discarded Draft v${String(field(e.before, "version") ?? "")}; the live version kept running.`;
     case "recon.run": return `${who} ran version ${v}${dates(e.after)}.`;
+    case "recon.run_rollback": {
+      const n = Number(field(e.after, "runs") ?? 1);
+      return `${who} rolled back ${n === 1 ? "a run" : `a run and the ${n - 1} after it`}; version ${v} runs again${dates(e.after)}.`;
+    }
     case "recon.simulate": return `${who} simulated draft v${v}${dates(e.after)}.`;
     case "recon.result_columns": return `${who} changed the Operation result columns.`;
     case "day.prepare": { const d = field(e.after, "date"); return `${who} prepared ${typeof d === "string" ? rangeText(d, d) : "a day"} for sign-off.`; }

@@ -5,11 +5,11 @@ import { toast } from "@starterkit/ui/ui/toast";
 import type { ApprovalRowDto } from "@starterkit/shared/contracts/approvals";
 import type { BreakSummaryDto } from "@starterkit/shared/contracts/breaks";
 import type { FacetsDto, Page } from "@starterkit/shared/contracts/common";
-import type { ReconDto, ReconLiveDto, ReconRunDto, ReconTrendDto, ReconVersionDetailDto, ReconVersionDto, RunRangeBody, TodayDto } from "@starterkit/shared/contracts/recon";
+import type { ReconDto, ReconLiveDto, ReconRunDto, ReconTrendDto, RollbackRunDto, ReconVersionDetailDto, ReconVersionDto, RunRangeBody, TodayDto } from "@starterkit/shared/contracts/recon";
 import type { SourceDto, SourceRowDto } from "@starterkit/shared/contracts/sources";
 import type { SpaceRowDto } from "@starterkit/shared/contracts/spaces";
 import { api, errorText, retryUnlessNotFound } from "@/lib/client/api";
-import { RECON_KEY, sideSourceOptions, sourceDetail, spaceDetail } from "@/lib/shared/queries";
+import { ENGINE_KEY, RECON_KEY, sideSourceOptions, sourceDetail, spaceDetail } from "@/lib/shared/queries";
 import { draftSimulations, LIVE_POLL_MS, LIVE_RUN_POLL_MS, MY_APPROVALS_POLL_MS, myApprovals, reconLive, reconOpenSummary, reconReasons, reconTrend, reconDetail, reconRun, reconVersion, spaceToday } from "@/lib/shared/queries-recon";
 import { isLive, recordDates, replayGap, suggestedReplay } from "./run-model";
 import { appDate } from "@starterkit/ui/lib/format";
@@ -34,6 +34,19 @@ export const MAKER_REASON = "Only a config maker of this space changes recons.";
 export const NEW_RECON_REASON = "Only a config maker of this space adds recons.";
 
 /** The viewer's roles in the space (the space's own read, prefetched by the page under the spaces key). */
+/**
+ * Roll back from a run (a space admin, the run history): it and every live run after it are undone, then a rerun,
+ * queued, matches their dates again. The result a toast; a failure stays in the confirm dialog.
+ */
+export function useRollbackRun(spaceId: string, id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (runId: string) => api<RollbackRunDto>(reconApi(spaceId, id, `/runs/${encodeURIComponent(runId)}/rollback`), { method: "POST", body: "{}" }),
+    onSuccess: (r) => toast(`Rollback of ${r.runs} ${r.runs === 1 ? "run" : "runs"} queued. The rerun undoes them first, then matches their dates again.`),
+    onSettled: () => qc.invalidateQueries({ queryKey: ENGINE_KEY }),
+  });
+}
+
 export function useSpaceRoles(spaceId: string) {
   const { key, url } = spaceDetail(spaceId);
   return useQuery({ queryKey: key, queryFn: () => api<SpaceRowDto>(url) }).data?.roles ?? [];

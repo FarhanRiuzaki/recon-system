@@ -60,7 +60,7 @@ export const ACTION_LABEL = {
   "source.run": "Source pull started", "source.rollback": "Source pulls rolled back",
   "recon.create": "Recon created", "recon.version_create": "Recon version drafted", "recon.version_update": "Recon version edited",
   "recon.version_submit": "Recon version submitted", "recon.version_approve": "Recon version approved", "recon.version_reject": "Recon version rejected",
-  "recon.discard": "Draft recon deleted", "recon.version_discard": "Recon draft discarded", "recon.run": "Recon run started", "recon.simulate": "Recon simulation started",
+  "recon.discard": "Draft recon deleted", "recon.version_discard": "Recon draft discarded", "recon.run": "Recon run started", "recon.run_rollback": "Recon runs rolled back", "recon.simulate": "Recon simulation started",
   "recon.result_columns": "Operation result columns changed",
   "inbox.upload": "Inbox file uploaded", "inbox.folder_create": "Inbox folder created", "inbox.folder_delete": "Inbox folder deleted",
   "inbox.file_delete": "Inbox file deleted",

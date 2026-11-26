@@ -9,7 +9,7 @@
 // queue they are on (Task 6's ticks start theirs through claimConfig the same way). A run whose job is over while the run
 // is not (its worker died past its retries) is failed by that same check: the reaper runs at the next request of the
 // config, not on a timer.
-import type { ReconRunDto, RunRangeBody } from "@starterkit/shared/contracts/recon";
+import type { ReconRunDto, RollbackRunDto, RunRangeBody } from "@starterkit/shared/contracts/recon";
 import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import type { InTx, Tx } from "../../kernel/db";
 import { ApiError, notFound } from "../../kernel/errors";
@@ -24,8 +24,9 @@ import { withSpace } from "../spaces";
 import { lastClosedDay } from "./breaks";
 import { LOOKBACK_DAYS } from "./rules";
 import { dispatch, runScheduled } from "./schedule";
+import { rollbackSet } from "./rollback";
 import { reconDays, reconRuns } from "./schema";
-import { addDays, backfillRun, closedDates, createRun, execRun, failRun, projectDayClose, refreshRunDays, queueOf, RUN_INTERNAL_ERROR, RunAborted, type RunMode, runRange, runRow } from "./service";
+import { addDays, backfillRun, closedDates, createRun, execRun, failRun, projectDayClose, RANGE_MAX_DAYS, refreshRunDays, queueOf, RUN_INTERNAL_ERROR, RunAborted, type RunMode, runRange, runRow } from "./service";
 
 /**
  * How long a run without a job (run in process: runRecon, a test) counts as under way: the longest a job may run.
@@ -105,6 +106,46 @@ export async function requestRun(ctx: Ctx, configId: string, b: RunRangeBody): P
     await recordActivity(tx, ctx, { action: "recon.run", target: { type: "recon", id: c.id, label: c.name }, after: { runId: id, version: p.version, ...range } });
     await send(tx, spaceId, configId, id, "manual");
     return runRow(tx, spaceId, configId, id);
+  });
+}
+
+/**
+ * POST …/runs/:runId/rollback (a space admin; rollback.ts): run `runId` and every live run after it rolled back, then
+ * their dates run again: a rerun of the published version over them (from the first's start to the last's end),
+ * queued with rollback_of = `runId`; its job does the rollback first. 404 recon or run; 400 a simulation, or dates past
+ * RANGE_MAX_DAYS; 409 no published version, the run rolled back already or not ended, a closed date in the range,
+ * a run under way. A closed carry-over date, or a change waiting for a decision, refuses it when the job runs (the rerun
+ * fails with why).
+ */
+export async function requestRollback(ctx: Ctx, configId: string, runId: string): Promise<RollbackRunDto> {
+  return inSpace(ctx, async (tx, spaceId) => {
+    const [c] = await tx.select().from(reconConfigs).where(and(eq(reconConfigs.spaceId, spaceId), eq(reconConfigs.id, configId)));
+    if (!c) throw notFound("recon");
+    const [x] = await tx.select().from(reconRuns).where(and(eq(reconRuns.spaceId, spaceId), eq(reconRuns.configId, configId), eq(reconRuns.id, runId), isNull(reconRuns.baselineOf)));
+    if (!x) throw notFound("run");
+    if (x.mode === "simulation") throw new ApiError("bad_request", "A simulation changes no live items, so there is nothing to roll back.");
+    if (x.rolledBackAt) throw new ApiError("invalid_state", "This run was rolled back already.");
+    if (x.status === "queued" || x.status === "running") throw new ApiError("invalid_state", "This run hasn't ended yet. Roll it back once it ends.");
+    const [p] = await tx.select({ id: reconConfigVersions.id, version: reconConfigVersions.version }).from(reconConfigVersions)
+      .where(and(eq(reconConfigVersions.spaceId, spaceId), eq(reconConfigVersions.configId, configId), eq(reconConfigVersions.status, "published")));
+    if (!p) throw new ApiError("invalid_state", "This recon has no published version to run its dates again. Approve one first.");
+    const [set] = await tx.select({ n: sql<number>`count(*)::int`, from: sql<string>`min(${reconRuns.dateFrom})::text`, to: sql<string>`max(${reconRuns.dateTo})::text` })
+      .from(reconRuns).where(rollbackSet(x));
+    const range = { from: set!.from, to: set!.to };
+    const days = Math.round((Date.parse(`${range.to}T00:00:00Z`) - Date.parse(`${range.from}T00:00:00Z`)) / 86_400_000) + 1;
+    if (days > RANGE_MAX_DAYS) throw new ApiError("bad_request", `This run and the ones after it cover ${days} business dates; a rerun covers at most ${RANGE_MAX_DAYS}. Roll back a later run.`);
+    const [shut] = await tx.select({ d: sql<string>`min(${reconDays.businessDate})::text` }).from(reconDays).where(and(eq(reconDays.spaceId, spaceId),
+      eq(reconDays.configId, configId), eq(reconDays.status, "closed"), sql`${reconDays.businessDate} between ${range.from}::date and ${range.to}::date`));
+    if (shut?.d) throw new ApiError("day_closed", `Business date ${shut.d} is closed, so what these runs did there stays. Roll back a run after it.`);
+    await claimConfig(tx, spaceId, configId);
+    const id = Bun.randomUUIDv7();
+    await createRun(tx, { spaceId, configId, versionId: p.id, mode: "rerun", ...range, status: "queued", id, jobId: id, rollbackOf: x.id });
+    await recordActivity(tx, ctx, {
+      action: "recon.run_rollback", target: { type: "recon", id: c.id, label: c.name },
+      after: { runId: x.id, startedAt: x.startedAt.toISOString(), runs: set!.n, rerunId: id, version: p.version, ...range },
+    });
+    await send(tx, spaceId, configId, id, "rerun");
+    return { runs: set!.n, rerun: await runRow(tx, spaceId, configId, id) };
   });
 }
 

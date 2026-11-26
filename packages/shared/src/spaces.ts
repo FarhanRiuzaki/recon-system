@@ -14,6 +14,8 @@ export const SPACE_ACTION = {
   assign: ["space_admin", "reviewer"],
   signOff: ["space_admin", "reviewer"],
   runRecon: ["space_admin", "config_maker", "operator"],
+  /** Roll a run back with every live run after it; its dates then run again. */
+  rollbackRun: ["space_admin"],
   /** Create a recon, edit, send and delete its draft versions. */
   editRecon: ["config_maker"],
   simulate: ["config_maker"],

@@ -238,6 +238,18 @@
         "null"
       ]
     },
+    "rollbackOf": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "rolledBackAt": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "baseline": {
       "anyOf": [
         {
@@ -731,6 +743,8 @@
     "error",
     "startedAt",
     "finishedAt",
+    "rollbackOf",
+    "rolledBackAt",
     "baseline",
     "changes",
     "days",
