@@ -1,7 +1,7 @@
 // Sign-in (password, LDAP, second factor), sign-out, reset links and re-authentication.
 import { and, eq, getTableColumns, isNotNull, lt, lte, not, or, type SQL, sql } from "drizzle-orm";
 import type { AuthLogDto } from "@starterkit/shared/contracts/audit";
-import type { AuthMethod, LoginBody, ResetPasswordBody, TwoFactorBody } from "@starterkit/shared/contracts/auth";
+import type { AuthMethod, DeviceLoginBody, LoginBody, ResetPasswordBody, TwoFactorBody } from "@starterkit/shared/contracts/auth";
 import { afterSignIn } from "@starterkit/ui/lib/safe-path";
 import { config } from "../../kernel/config";
 import { decryptSecret, hashToken, randomToken } from "../../kernel/crypto";
@@ -12,6 +12,7 @@ import { sendMail } from "../../kernel/mailer";
 import type { Client } from "../../kernel/plugins/context";
 import { recordAuth } from "../audit";
 import { advanceTotpStep, markRecoveryCodeUsed, setPassword, stampSignIn, unusedRecoveryCodes, users } from "../users";
+import { purgeTrustedDevices, revokeTrustedDevices, trustDevice, trustOf, useTrust } from "./devices";
 import { directory } from "./ldap";
 import { forgotLimits, hitIp, loginGate, loginLimits, passwordFails, retryText } from "./limits";
 import { hashPassword, verifyPassword } from "./password";
@@ -24,6 +25,7 @@ const BAD_LOGIN = "The sign-in details don't match an account. Check your email,
 const EXPIRED = "The sign-in expired. Start again with your email and password.";
 const BAD_CODE = "That code didn't match. Enter the current code from your authenticator app or an unused recovery code.";
 const BAD_LINK = "This reset link expired or was already used. Request a new link.";
+const UNTRUSTED = "This device is no longer trusted for this account. Sign in with your password.";
 
 async function selectUser(where: SQL | undefined): Promise<UserRow | null> {
   const [r] = await db.select({ ...getTableColumns(users), roles: rolesOf(users.id), connected: providersOf(users.id) }).from(users).where(where);
@@ -197,13 +199,39 @@ export async function login(b: LoginBody, client: Client): Promise<{ next: strin
 }
 
 /**
+ * Sign-in step 1 on a trusted browser (DEC-065): `login` and the browser's device tokens instead of a password. A live
+ * trust of that account among the tokens gets the same challenge a password would (method `device`, bound to the
+ * trust); every other case (unknown login, no trust here, another account's trust, inactive, two-factor off) answers
+ * the same `{ password: true }`, so the step names no account. It goes through the sign-in gate like a password; no
+ * credential is tried, so the attempt's reservation is released either way.
+ */
+export async function deviceLogin(b: DeviceLoginBody, client: Client): Promise<{ next: string; challenge: string } | { password: true }> {
+  const user = await findUser(b.login);
+  const name = (user?.username ?? b.login.trim()).toLowerCase();
+  const wait = await loginGate(loginLimits, { step: "login", ip: client.ip, username: name });
+  if (wait != null) throw tooManyAttempts(wait, retryText(wait));
+  await loginLimits.user.release(name);
+  const trust = user?.isActive && user.twoFactorEnabled ? await trustOf(b.tokens, user.id) : null;
+  if (!user || !trust) return { password: true };
+  const next = user.mustChangePassword ? OWN_PASSWORD_PAGE : afterSignIn(b.next);
+  const challenge = randomToken();
+  await db.transaction(async (tx) => {
+    await lockAuthUser(tx, user);
+    await tx.insert(authChallenges).values({
+      id: Bun.randomUUIDv7(), tokenHash: hashToken(challenge), userId: user.id, method: "device", deviceId: trust.id, expiresAt: sql`now() + interval '10 minutes'`,
+    });
+  });
+  return { next: twoFactorPath(next), challenge };
+}
+
+/**
  * Sign-in step 2 with the challenge `key` (`X-Auth-Challenge`): only a challenge younger than 10 minutes gets here (an
  * older one is deleted); a 6-digit TOTP (each one once) or a recovery code (each one once) finishes it and deletes the
  * challenge.
  */
-export async function secondFactor(key: string | null, b: TwoFactorBody, client: Client): Promise<{ next: string; token: string }> {
+export async function secondFactor(key: string | null, b: TwoFactorBody, client: Client): Promise<{ next: string; token: string; device?: string }> {
   const [p] = key
-    ? await db.select({ id: authChallenges.id, userId: authChallenges.userId, method: authChallenges.method, live: sql<boolean>`${authChallenges.expiresAt} > now()` })
+    ? await db.select({ id: authChallenges.id, userId: authChallenges.userId, method: authChallenges.method, deviceId: authChallenges.deviceId, live: sql<boolean>`${authChallenges.expiresAt} > now()` })
       .from(authChallenges).where(eq(authChallenges.tokenHash, hashToken(key)))
     : [];
   const user = p?.live ? await userById(p.userId) : null;
@@ -230,17 +258,19 @@ export async function secondFactor(key: string | null, b: TwoFactorBody, client:
     await fail();
     throw new ApiError("account_inactive");
   }
-  const token = await db.transaction(async (tx) => {
+  const { token, device } = await db.transaction(async (tx) => {
     await lockAuthUser(tx, user);
     // Deleted in the same transaction: of two concurrent finishes of one challenge, only one gets a session.
     // ponytail: the loser has already spent its code (TOTP step or recovery code); fine for one user racing themself.
     const gone = await tx.delete(authChallenges).where(eq(authChallenges.id, p.id)).returning({ id: authChallenges.id });
     if (!gone.length) throw new ApiError("unauthenticated", EXPIRED);
+    // A device sign-in: the trust must still hold (revoked, expired or credentials changed since → the full flow).
+    if (p.deviceId && !(await useTrust(tx, p.deviceId, user))) throw new ApiError("unauthenticated", UNTRUSTED);
     const t = await completeSignIn(tx, user, method, client);
     await logAuth(tx, client, "2fa_success", method, user.email, user.id);
-    return t;
+    return { token: t, device: !p.deviceId && b.trust ? await trustDevice(tx, user, client) : undefined };
   });
-  return { next: user.mustChangePassword ? OWN_PASSWORD_PAGE : afterSignIn(b.next), token };
+  return { next: user.mustChangePassword ? OWN_PASSWORD_PAGE : afterSignIn(b.next), token, ...(device && { device }) };
 }
 
 /** Sign out: ends the bearer's session (`logout` entry) and/or deletes the challenge. */
@@ -307,6 +337,7 @@ export async function reset(b: ResetPasswordBody, client: Client): Promise<void>
     await lockAuthUser(tx, proof);
     await setPassword(tx, proof.id, hash);
     await endUserSessions(tx, proof.id);
+    await revokeTrustedDevices(tx, proof, client);
     await deleteUserTokens(tx, proof.id);
     await logAuth(tx, client, "password_reset", "password", proof.email, proof.id);
   });
@@ -316,7 +347,7 @@ export async function reset(b: ResetPasswordBody, client: Client): Promise<void>
 const ONE = { one: sql`1` };
 
 /**
- * Janitor: deletes ended sessions (expired or idle), second-factor challenges and reset/invite links past expiry,
+ * Janitor: deletes ended sessions (expired or idle), ended trusted devices, second-factor challenges and reset/invite links past expiry,
  * rate-limit windows older than 1 h (the longest window is 15 min) and backoff rows that block nothing (quiet for
  * 15 min, the backoff's decay, or released to 0). Rows deleted per table.
  */
@@ -324,6 +355,7 @@ export async function purgeAuth(tx: Tx): Promise<Record<string, number>> {
   return {
     sessions: (await tx.delete(sessions).where(not(sessionLive())).returning(ONE)).length,
     auth_challenges: (await tx.delete(authChallenges).where(lte(authChallenges.expiresAt, sql`now()`)).returning(ONE)).length,
+    trusted_devices: await purgeTrustedDevices(tx),
     user_tokens: (await tx.delete(userTokens).where(lte(userTokens.expiresAt, sql`now()`)).returning(ONE)).length,
     rate_limits: (await tx.delete(rateLimits).where(lt(rateLimits.windowStart, sql`now() - interval '1 hour'`)).returning(ONE)).length,
     login_backoff: (await tx.delete(loginBackoff)

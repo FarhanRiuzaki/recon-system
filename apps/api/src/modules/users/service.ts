@@ -24,7 +24,7 @@ import { countN, facetOf, likeEscape, one, pageQuery, sortSql } from "../../kern
 import { isUuid } from "../../kernel/parse";
 import { activity, recordActivity } from "../audit";
 import {
-  actorPermissions, createInvite, type Ctx, deleteUserTokens, endSession, endUserSessions, hashPassword, permsOf, providersOf, rolesOf, sessionLive,
+  actorPermissions, createInvite, type Ctx, deleteUserTokens, endSession, endUserSessions, revokeTrustedDevice, revokeTrustedDevices, hashPassword, permsOf, providersOf, rolesOf, sessionLive,
   sessions, toUserRow,
 } from "../auth";
 import { checkRoleGrant, grantRoles, inCatalogOrder, type RoleRef, revokeRoles, roles, rolesByName, rolesOfUser, userRoles } from "../rbac";
@@ -276,6 +276,7 @@ async function applyStatus(tx: InTx, ctx: Ctx, u: UserRowDto, active: boolean): 
   if (!active) {
     await endUserSessions(tx, u.id);
     await deleteUserTokens(tx, u.id);
+    await revokeTrustedDevices(tx, u, ctx.client);
   }
   await recordActivity(tx, ctx, { action: active ? "user.activate" : "user.deactivate", target: { type: "user", id: u.id, label: u.name }, before: { isActive: !active }, after: { isActive: active } });
 }
@@ -453,6 +454,7 @@ export async function resetUserPassword(ctx: Ctx, id: string): Promise<string> {
     await updateUser(tx, id, { passwordHash: hash, mustChangePassword: true });
     await endUserSessions(tx, id);
     await deleteUserTokens(tx, id);
+    await revokeTrustedDevices(tx, u, ctx.client);
     await recordActivity(tx, ctx, { action: "user.reset_password", target: { type: "user", id, label: u.name } });
   });
   return password;
@@ -482,5 +484,19 @@ export async function endSessionOf(ctx: Ctx, id: string, sid: string): Promise<v
     if (sid === ctx.sid) throw currentSession();
     await endSession(sid, tx);
     await recordActivity(tx, ctx, { action: "user.session_end", target: { type: "user", id, label: u.name }, after: { session: s.device } });
+  });
+}
+
+/** Revoke one trusted device of another user (DEC-065). A device that isn't theirs, or has ended, answers like an unknown one. */
+export async function revokeDeviceOf(ctx: Ctx, id: string, did: string): Promise<void> {
+  const gone = () => new ApiError("not_found", "This trusted device doesn't exist or has already been removed.");
+  if (!isUuid(id) || !isUuid(did)) throw gone();
+  await db.transaction(async (tx) => {
+    const u = (await lockUsers(tx, [id])).get(id);
+    if (!u) throw gone();
+    await actorOver(tx, ctx, u);
+    const label = await revokeTrustedDevice(tx, u, did, ctx.client);
+    if (!label) throw gone();
+    await recordActivity(tx, ctx, { action: "user.device_revoke", target: { type: "user", id, label: u.name }, after: { device: label } });
   });
 }

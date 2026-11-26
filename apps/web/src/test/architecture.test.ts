@@ -246,7 +246,7 @@ function runtimeViolations(fs: F[]): string[] {
  * and activity entries of every other endpoint live in the API (apps/api/test/architecture/conformance.test.ts).
  */
 const ROUTE_FILES = [
-  "app/api/[...path]/route.ts", "app/api/auth/2fa/route.ts", "app/api/auth/forgot/route.ts", "app/api/auth/login/route.ts",
+  "app/api/[...path]/route.ts", "app/api/auth/2fa/route.ts", "app/api/auth/device/forget/route.ts", "app/api/auth/device/route.ts", "app/api/auth/forgot/route.ts", "app/api/auth/login/route.ts",
   "app/api/auth/logout/route.ts", "app/api/auth/oauth/[provider]/callback/route.ts", "app/api/auth/oauth/[provider]/mock-authorize/route.ts",
   "app/api/auth/oauth/[provider]/route.ts", "app/api/auth/reset/route.ts",
 ].map((r) => WEB + r);

@@ -21,7 +21,7 @@ import { ReportFileListQuery, ReportTemplateListQuery } from "@starterkit/shared
 import { SpaceMemberListQuery } from "@starterkit/shared/contracts/spaces";
 import { PermissionListQuery, RoleListQuery } from "@starterkit/shared/contracts/rbac";
 import { UserListQuery } from "@starterkit/shared/contracts/users";
-import { ACTION_RUNS, ACTIVITY, AUTH_LOG, activityEntry, CONNECTOR_CALLS, CONNECTOR_OPTIONS, connectorDetail, CONNECTORS, dashboardRead, ME_KEY, reconDashboardRead, MY_SESSIONS, PERMISSIONS_TABLE, POSTING_GROUPS, postingGroup, projectDetail, PROJECTS, SPACE_MEMBERS, spaceDetail, spaceOptions, roleKey, roleOptions, roleUrl, ROLES, SUPERADMINS, sideSourceOptions, sourceActivity, sourceDetail, sourceFiles, sourcePullsFirst, sourceQuarantine, sourceRecords, SOURCES, sourceSnapshots, sourceSummary, sourceVersion, sourceVersions, type TableDef, userDetail as userDetailQuery, USERS, userSessions as userSessionsTable, userSpaces as userSpacesQuery, INBOX_FILES, inboxFolders, REPORT_FILES, REPORT_TEMPLATES, reportTemplate, reportVersions } from "@/lib/shared/queries";
+import { ACTION_RUNS, ACTIVITY, AUTH_LOG, activityEntry, CONNECTOR_CALLS, CONNECTOR_OPTIONS, connectorDetail, CONNECTORS, dashboardRead, ME_KEY, reconDashboardRead, MY_DEVICES, MY_SESSIONS, PERMISSIONS_TABLE, POSTING_GROUPS, postingGroup, projectDetail, PROJECTS, SPACE_MEMBERS, spaceDetail, spaceOptions, roleKey, roleOptions, roleUrl, ROLES, SUPERADMINS, sideSourceOptions, sourceActivity, sourceDetail, sourceFiles, sourcePullsFirst, sourceQuarantine, sourceRecords, SOURCES, sourceSnapshots, sourceSummary, sourceVersion, sourceVersions, type TableDef, userDetail as userDetailQuery, userDevices as userDevicesQuery, USERS, userSessions as userSessionsTable, userSpaces as userSpacesQuery, INBOX_FILES, inboxFolders, REPORT_FILES, REPORT_TEMPLATES, reportTemplate, reportVersions } from "@/lib/shared/queries";
 import { APPROVALS, BREAKS, breakActivity, breakSummaryUrl, myApprovals, reconOpenSummary, reconReasons, breakCandidates, breakDetail, draftSimulations, reconActivity, reconDetail, reconRun, reconLastTick, reconLive, reconRunItems, reconRunsFirst, reconSignoffs, reconTrend, RECONS, spaceWorkflow, WORKFLOWS, reconVersion, reconVersions, spaceToday, RESULTS, resultColumns, resultCountsUrl, reconOptions } from "@/lib/shared/queries-recon";
 import { facetsRequest, readTable, tableRequest } from "@/lib/shared/table-state";
 import { backendJson, v1Path } from "./backend";
@@ -60,11 +60,13 @@ export const reads = {
   reconDashboard: (sp = new URLSearchParams()): Read => reconDashboardRead(sp),
   me: (): Read => ({ key: ME_KEY, path: "/api/me" }),
   mySessions: (sp: URLSearchParams) => table(MY_SESSIONS, sp, SessionListQuery),
+  myDevices: (): Read => ({ key: MY_DEVICES.key, path: MY_DEVICES.url }),
   users: (sp: URLSearchParams) => table(USERS, sp, UserListQuery),
   roleOptions: (): Read => ({ key: roleOptions().key, path: roleOptions().url }),
   superadmins: (): Read => ({ key: SUPERADMINS.key, path: SUPERADMINS.url }),
   user: (id: string): Read => ({ key: userDetailQuery(id).key, path: userDetailQuery(id).url }),
   userSessions: (id: string, sp: URLSearchParams) => table(userSessionsTable(id), sp, SessionListQuery),
+  userDevices: (id: string): Read => ({ key: userDevicesQuery(id).key, path: userDevicesQuery(id).url }),
   userSpaces: (id: string): Read => ({ key: userSpacesQuery(id).key, path: userSpacesQuery(id).url }),
   roles: (sp: URLSearchParams) => table(ROLES, sp, RoleListQuery),
   connectors: (sp: URLSearchParams) => table(CONNECTORS, sp, ConnectorListQuery),

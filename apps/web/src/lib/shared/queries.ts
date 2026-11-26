@@ -53,6 +53,11 @@ export function reconDashboardRead(sp: Pick<URLSearchParams, "get">) {
 export const ME_KEY = ["me"] as const;
 export const SESSIONS_SPEC: TableSpec<NoFilters> = { sorts: SESSION_SORTS, defaultSort: "-lastSeenAt", filters: {} };
 export const MY_SESSIONS: TableDef<NoFilters> = { key: ME_KEY[0], path: "/api/me/sessions", spec: SESSIONS_SPEC };
+/**
+ * The signed-in user's trusted devices (DEC-065): at most 5 per user, so one page of 15 holds them all; under "me", so
+ * a password change or 2FA change refreshes it too.
+ */
+export const MY_DEVICES = { key: [...ME_KEY, "devices"] as const, url: "/api/me/devices?pageSize=15" };
 /** The signed-in user's saved views of list page `path` (at most 20, so one page of 25 holds them all). */
 export const savedViews = (path: string) => ({ key: [...ME_KEY, "views", path] as const, url: `/api/me/views?${new URLSearchParams({ path, pageSize: "25" })}` });
 
@@ -65,6 +70,8 @@ export const USERS: TableDef<UserFilters> = {
   spec: { sorts: USER_SORTS, defaultSort: "name", search: ["q"], filters: { q: text(200), role: multiChoice(), status: multiChoice() } },
 };
 export const userDetail = (id: string) => ({ key: [...USERS_KEY, "detail", id] as const, url: `/api/users/${encodeURIComponent(id)}` });
+/** A user's trusted devices (DEC-065): at most 5, one page of 15. */
+export const userDevices = (id: string) => ({ key: [...USERS_KEY, "devices", id] as const, url: `/api/users/${encodeURIComponent(id)}/devices?pageSize=15` });
 export const userSessions = (id: string): TableDef<NoFilters> => ({ key: USERS_KEY[0], path: `/api/users/${encodeURIComponent(id)}/sessions`, spec: SESSIONS_SPEC });
 /** Role pickers ask for one page of 100 (name A–Z), or the roles matching `q`. */
 export const roleOptions = (q = "", page = 1) => ({

@@ -14,7 +14,7 @@ import { ApiError, currentSession, isUniqueViolation } from "../../kernel/errors
 import { isUuid } from "../../kernel/parse";
 import { recordActivity } from "../audit";
 import {
-  type Ctx, deleteUserTokens, endSession, endUserSessions, hashPassword, lockAuthUser, lockLiveSession, matchTotpStep, newRecoveryCodes, newTotpSecret,
+  type Ctx, deleteUserTokens, endSession, endUserSessions, revokeTrustedDevice, revokeTrustedDevices, hashPassword, lockAuthUser, lockLiveSession, matchTotpStep, newRecoveryCodes, newTotpSecret,
   oauthOnly, otpauthUrl, reauth, stampReauth, userById, type UserRow,
 } from "../auth";
 import { otherIdentities, unlinkIdentity } from "../oauth";
@@ -78,6 +78,7 @@ export async function changePassword(ctx: Ctx, b: ChangePasswordBody): Promise<v
     await updateUser(tx, u.id, { passwordHash: hash, mustChangePassword: false });
     await endUserSessions(tx, u.id, ctx.sid);
     await deleteUserTokens(tx, u.id);
+    await revokeTrustedDevices(tx, u, ctx.client);
     await recordActivity(tx, ctx, { action: "me.password", target: target(u) });
   });
 }
@@ -110,6 +111,7 @@ export async function enableTwoFactor(ctx: Ctx, b: TwoFactorEnableBody): Promise
   await db.transaction(async (tx) => {
     await lockAccount(tx, ctx);
     if (!(await enableTotp(tx, u.id, { pending: u.pendingTotpSecret!, step, codeHashes }))) throw new ApiError("invalid_code", WRONG_CODE);
+    await revokeTrustedDevices(tx, u, ctx.client); // a new secret: a trust from an earlier enrolment never carries over
     await recordActivity(tx, ctx, { action: "me.2fa_enable", target: target(u) });
   });
   return { recoveryCodes };
@@ -130,6 +132,7 @@ export async function disableTwoFactor(ctx: Ctx, b: DisableTwoFactorBody): Promi
   await db.transaction(async (tx) => {
     await lockAccount(tx, ctx);
     if (!(await disableTotp(tx, u.id))) throw off();
+    await revokeTrustedDevices(tx, u, ctx.client); // without a second factor a device can't stand in for the password
     await recordActivity(tx, ctx, { action: "me.2fa_disable", target: target(u) });
   });
 }
@@ -178,5 +181,17 @@ export async function endOwnSession(ctx: Ctx, id: string): Promise<void> {
     if (id === ctx.sid) throw currentSession();
     await endSession(id, tx);
     await recordActivity(tx, ctx, { action: "me.session_end", target: { type: "session", id, label: s.device } });
+  });
+}
+
+/** Revoke one of your trusted devices (DEC-065). Someone else's id, or an ended trust, answers like an unknown one (404). */
+export async function revokeOwnDevice(ctx: Ctx, id: string): Promise<void> {
+  const gone = () => new ApiError("not_found", "This trusted device doesn't exist or has already been removed.");
+  if (!isUuid(id)) throw gone();
+  await db.transaction(async (tx) => {
+    await lockAccount(tx, ctx);
+    const label = await revokeTrustedDevice(tx, ctx.user, id, ctx.client);
+    if (!label) throw gone();
+    await recordActivity(tx, ctx, { action: "me.device_revoke", target: { type: "device", id, label } });
   });
 }

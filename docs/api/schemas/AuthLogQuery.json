@@ -75,7 +75,9 @@
             "logout",
             "2fa_success",
             "2fa_failed",
-            "password_reset"
+            "password_reset",
+            "device_trusted",
+            "device_revoked"
           ]
         },
         {
@@ -90,7 +92,9 @@
               "logout",
               "2fa_success",
               "2fa_failed",
-              "password_reset"
+              "password_reset",
+              "device_trusted",
+              "device_revoked"
             ]
           }
         }
@@ -108,7 +112,8 @@
             "password",
             "ldap",
             "google",
-            "apple"
+            "apple",
+            "device"
           ]
         },
         {
@@ -120,7 +125,8 @@
               "password",
               "ldap",
               "google",
-              "apple"
+              "apple",
+              "device"
             ]
           }
         }

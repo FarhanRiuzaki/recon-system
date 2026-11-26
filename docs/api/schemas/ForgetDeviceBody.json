@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ForgetDeviceBody",
+  "type": "object",
+  "properties": {
+    "token": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "login": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 254
+    }
+  },
+  "required": [
+    "token",
+    "login"
+  ]
+}

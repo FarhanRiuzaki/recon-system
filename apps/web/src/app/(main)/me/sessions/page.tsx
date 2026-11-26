@@ -5,5 +5,5 @@ import { Prefetch, reads, type SearchParams, toSearch } from "@/lib/server/prefe
 export const metadata: Metadata = { title: "Sessions" };
 
 export default async function Page({ searchParams }: { searchParams: Promise<SearchParams> }) {
-  return <Prefetch reads={[reads.mySessions(toSearch(await searchParams))]}><MySessionsPage /></Prefetch>;
+  return <Prefetch reads={[reads.mySessions(toSearch(await searchParams)), reads.myDevices()]}><MySessionsPage /></Prefetch>;
 }

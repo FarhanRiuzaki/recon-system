@@ -2,13 +2,13 @@
 // session 401 → body 400 → 404 → rules → change → activity (the last three in service.ts).
 import { Elysia } from "elysia";
 import {
-  ChangePasswordBody, ConnectionProvider, CreateSavedViewBody, DisableTwoFactorBody, ReauthBody, SavedViewListQuery, SessionListQuery,
+  ChangePasswordBody, ConnectionProvider, CreateSavedViewBody, DisableTwoFactorBody, ReauthBody, SavedViewListQuery, SessionListQuery, TrustedDeviceListQuery,
   TwoFactorEnableBody, UpdateProfileBody,
 } from "@starterkit/shared/contracts/me";
 import { body } from "../../kernel/parse";
-import { guard, sessionPage } from "../auth";
+import { guard, sessionPage, trustedDevicePage } from "../auth";
 import {
-  changePassword, confirmIdentity, disableTwoFactor, disconnect, enableTwoFactor, endOwnSession, startTwoFactor, toMe, updateProfile,
+  changePassword, confirmIdentity, disableTwoFactor, disconnect, enableTwoFactor, endOwnSession, revokeOwnDevice, startTwoFactor, toMe, updateProfile,
 } from "./service";
 import { deleteView, saveView, viewPage } from "./views";
 
@@ -40,6 +40,12 @@ export const meController = () =>
     .get("/v1/me/sessions", ({ ctx, query }) => sessionPage(ctx.user.id, query, ctx.sid), { query: SessionListQuery, guard: null })
     .delete("/v1/me/sessions/:id", async ({ ctx, params }) => {
       await endOwnSession(ctx, params.id);
+      return OK;
+    }, { guard: null })
+    /** One page of the caller's trusted devices (DEC-065), last used first unless `sort` says otherwise. */
+    .get("/v1/me/devices", ({ ctx, query }) => trustedDevicePage(ctx.user.id, query), { query: TrustedDeviceListQuery, guard: null })
+    .delete("/v1/me/devices/:id", async ({ ctx, params }) => {
+      await revokeOwnDevice(ctx, params.id);
       return OK;
     }, { guard: null })
     /** The caller's saved views of one list page (`path`); saving and deleting one records no activity (a preference). */

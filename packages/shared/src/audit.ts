@@ -8,10 +8,10 @@ import type { AuthLogDto } from "./contracts/audit";
  * password step of a 2FA account passed and the code is still due; `password_reset` = a new password set by a reset or
  * invitation link (every session of the user ends).
  */
-export const AUTH_EVENTS = ["login_success", "password_ok", "login_failed", "logout", "2fa_success", "2fa_failed", "password_reset"] as const;
+export const AUTH_EVENTS = ["login_success", "password_ok", "login_failed", "logout", "2fa_success", "2fa_failed", "password_reset", "device_trusted", "device_revoked"] as const;
 /** Events that complete a sign-in (dashboard "sign-ins per day"). */
 export const FULL_SIGN_INS: readonly (typeof AUTH_EVENTS)[number][] = ["login_success", "2fa_success"];
-export const AUTH_METHODS = ["password", "ldap", "google", "apple"] as const;
+export const AUTH_METHODS = ["password", "ldap", "google", "apple", "device"] as const;
 /** Sort keys each log's endpoint accepts (`sortParam`). */
 export const ACTIVITY_SORTS = ["at", "actor", "action"] as const;
 export const AUTH_LOG_SORTS = ["at", "login", "event"] as const;
@@ -47,10 +47,10 @@ export function presetRange(range: AuditRange, now: number): { from: string; to:
 export const ACTION_LABEL = {
   "user.create": "User created", "user.update": "User updated", "user.activate": "User activated", "user.deactivate": "User deactivated",
   "user.delete": "User deleted", "user.assign_role": "Role assigned", "user.reset_password": "Password reset by admin",
-  "user.session_end": "User session ended",
+  "user.session_end": "User session ended", "user.device_revoke": "User trusted device removed",
   "role.create": "Role created", "role.update": "Role updated", "role.delete": "Role deleted", "permission.create": "Permissions added",
   "me.update": "Profile updated", "me.password": "Own password changed", "me.connect": "Account connected", "me.disconnect": "Account disconnected",
-  "me.session_end": "Own session ended", "me.2fa_setup": "Two-factor setup started", "me.2fa_enable": "Two-factor turned on",
+  "me.session_end": "Own session ended", "me.device_revoke": "Own trusted device removed", "me.2fa_setup": "Two-factor setup started", "me.2fa_enable": "Two-factor turned on",
   "me.2fa_disable": "Two-factor turned off",
   "project.create": "Project created", "project.update": "Project updated", "project.delete": "Project deleted",
   "space.create": "Space created", "space.update": "Space updated", "space.member_set": "Space roles set", "space.member_remove": "Space member removed",
@@ -79,8 +79,9 @@ export const ACTION_OPTIONS = Object.entries(ACTION_LABEL).map(([value, label]) 
 export const EVENT_LABEL: Record<AuthLogDto["event"], string> = {
   login_success: "Signed in", password_ok: "Password accepted, waiting for 2FA", login_failed: "Sign-in failed", logout: "Signed out",
   "2fa_success": "One-time code accepted", "2fa_failed": "One-time code rejected", password_reset: "Password reset by link",
+  device_trusted: "Device trusted", device_revoked: "Trusted device removed",
 };
-export const METHOD_LABEL: Record<AuthLogDto["method"], string> = { password: "Password", ldap: "Directory (LDAP)", google: "Google", apple: "Apple" };
+export const METHOD_LABEL: Record<AuthLogDto["method"], string> = { password: "Password", ldap: "Directory (LDAP)", google: "Google", apple: "Apple", device: "Trusted device" };
 
 /** Shown in place of any value whose field name says it is a credential. */
 export const MASK = "••••";

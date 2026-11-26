@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { type FormEvent, useEffect, useRef, useState } from "react";
+import { Checkbox } from "@starterkit/ui/ds/checkbox";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { SpinnerIcon } from "@starterkit/ui/ui/icons";
@@ -11,9 +12,13 @@ import { AuthCard, FormError } from "./auth-card";
 
 type Mode = "totp" | "recovery";
 
-/** Sign-in step 2: the 6-digit one-time code (submits itself at 6 digits) or a recovery code. */
-export function TwoFactorForm({ next }: { next: string }) {
+/**
+ * Sign-in step 2: the 6-digit one-time code (submits itself at 6 digits) or a recovery code. `offerTrust`: the
+ * password was the first factor, so "Trust this device" (on by default, DEC-065) lets this browser skip it next time.
+ */
+export function TwoFactorForm({ next, offerTrust = false }: { next: string; offerTrust?: boolean }) {
   const router = useRouter();
+  const [trust, setTrust] = useState(true);
   const [mode, setMode] = useState<Mode>("totp");
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -28,7 +33,7 @@ export function TwoFactorForm({ next }: { next: string }) {
     setBusy(true);
     setError(null);
     try {
-      const r = await api<{ next: string }>("/api/auth/2fa", { method: "POST", body: JSON.stringify({ code: value, next }) });
+      const r = await api<{ next: string }>("/api/auth/2fa", { method: "POST", body: JSON.stringify({ code: value, next, ...(offerTrust && { trust }) }) });
       router.replace(r.next);
       router.refresh();
     } catch (e) {
@@ -72,6 +77,15 @@ export function TwoFactorForm({ next }: { next: string }) {
             {totp ? "The code changes every 30 seconds." : "Each recovery code works once."}
           </span>
         </div>
+        {offerTrust && (
+          <div className="grid gap-0.5">
+            <div className="flex items-center gap-2">
+              <Checkbox id="trust-device" checked={trust} onToggle={() => setTrust(!trust)} label="Trust this device" />
+              <label htmlFor="trust-device" className="cursor-pointer text-body-sm text-fg">Trust this device</label>
+            </div>
+            <span className="pl-7 text-caption text-fg-3">Next time on this browser, sign in with your one-time code only. Ends after 30 days without use.</span>
+          </div>
+        )}
         {error && <FormError id={errId} message={error} />}
         {expired ? (
           <Button type="button" size="lg" className="h-10 w-full" onClick={() => void startOver()}>Sign in again</Button>

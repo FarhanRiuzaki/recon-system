@@ -13,9 +13,10 @@ export const SESSION_COOKIE = "sk_session";
 
 /**
  * The sealed cookie holds only `{ token, csrf }` (a full session: the API's session token and the mutation token) or
- * `{ challenge, challengeAt }` (password passed at `challengeAt`, second factor due). The user, permissions and session times live in the API.
+ * `{ challenge, challengeAt, device? }` (password passed at `challengeAt`, or `device`: a trusted browser stood in for it
+ * (DEC-065); second factor due). The user, permissions and session times live in the API.
  */
-export type AppSession = { token?: string; csrf?: string; challenge?: string; challengeAt?: number };
+export type AppSession = { token?: string; csrf?: string; challenge?: string; challengeAt?: number; device?: boolean };
 
 /** A password-passed sign-in waits this long for its second factor (the API's challenge lifetime). */
 export const PENDING_2FA_TTL_MS = 10 * 60_000;
@@ -66,11 +67,12 @@ export const authContext = cache(async (): Promise<{ user: UserDto; perms: Permi
  * (`challenge`). A session or pending sign-in the browser already held ends at the API first (best effort), so one
  * browser holds one session.
  */
-export async function storeSignIn(s: Awaited<ReturnType<typeof getSession>>, got: { token?: string; challenge?: string }, req: Request): Promise<void> {
+export async function storeSignIn(s: Awaited<ReturnType<typeof getSession>>, got: { token?: string; challenge?: string; device?: boolean }, req: Request): Promise<void> {
   if (s.token || s.challenge) await backend("/v1/auth/logout", { method: "POST", token: s.token, challenge: s.challenge, req });
   s.token = got.token;
   s.csrf = got.token ? newCsrfToken() : undefined;
   s.challenge = got.challenge;
   s.challengeAt = got.challenge ? Date.now() : undefined;
+  s.device = got.challenge && got.device ? true : undefined;
   await s.save();
 }

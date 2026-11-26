@@ -11,6 +11,9 @@
     "next": {
       "type": "string",
       "maxLength": 2048
+    },
+    "trust": {
+      "type": "boolean"
     }
   },
   "required": [

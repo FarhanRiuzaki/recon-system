@@ -1,7 +1,8 @@
 // Public API of the auth module (sign-in routes, sessions, passwords, TOTP, the guard): what other modules and the
 // test harness use. Other modules import only this file.
 export { authController } from "./controller";
-export { authChallenges, loginBackoff, rateLimits, sessions, userTokens } from "./schema";
+export { authChallenges, loginBackoff, rateLimits, sessions, trustedDevices, userTokens } from "./schema";
+export { revokeTrustedDevice, revokeTrustedDevices, TRUST_CAP_DAYS, TRUST_IDLE_DAYS, TRUST_MAX_PER_USER, trustedDevicePage } from "./devices";
 export { type Ctx, authenticate, bearer, guard, type SpaceGuard } from "./guard";
 export { LDAP_PASSWORD } from "./ldap";
 export { hitIp, oauthStartLimits, RateLimiter, retryText } from "./limits";

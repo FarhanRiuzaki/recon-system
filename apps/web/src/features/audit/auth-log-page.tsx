@@ -17,12 +17,15 @@ const METHODS = [{ value: "" as const, label: "Any" }, ...AUTH_METHODS.map((m) =
 // password accepted, the code still to come: under way (owner 24 Nov), not a warning
 const MEANING: Record<Event, StatusMeaning> = {
   login_success: "success", "2fa_success": "success", password_ok: "in_progress", login_failed: "failed", "2fa_failed": "failed", logout: "signed_out", password_reset: "signed_out",
+  device_trusted: "on", device_revoked: "off",
 };
 const LEGEND = [
   { health: statusTone("success"), label: "Signed in, code accepted", description: "The sign-in step passed." },
   { health: statusTone("in_progress"), label: "Password accepted, waiting for 2FA", description: "The password was right; the sign-in finishes after a one-time code." },
   { health: statusTone("failed"), label: "Sign-in failed, code rejected", description: "Wrong credentials or one-time code, or the account can't sign in." },
   { health: statusTone("signed_out"), label: "Signed out, password reset", description: "The session ended. A reset by link ends every session of the user." },
+  { health: statusTone("on"), label: "Device trusted", description: "The browser signs in with the one-time code only, for 30 days after its last use." },
+  { health: statusTone("off"), label: "Trusted device removed", description: "Forgotten at sign-in, removed by the user or an admin, or ended with a credential change." },
 ];
 const EventChip = ({ event }: { event: Event }) => <StatusChip health={statusTone(MEANING[event])} label={EVENT_LABEL[event]} />;
 

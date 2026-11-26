@@ -10,7 +10,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const { id } = await params;
   // The user, their sessions table, the Superadmin check and their spaces (space.view only) in one server pass (no detail → sessions waterfall).
   return (
-    <Prefetch reads={[reads.user(id), reads.userSessions(id, toSearch(await searchParams)), reads.superadmins(), ...(perms.includes("space.view") ? [reads.userSpaces(id)] : [])]}>
+    <Prefetch reads={[reads.user(id), reads.userSessions(id, toSearch(await searchParams)), reads.userDevices(id), reads.superadmins(), ...(perms.includes("space.view") ? [reads.userSpaces(id)] : [])]}>
       <UserDetail id={id} />
     </Prefetch>
   );

@@ -13,6 +13,8 @@ export const metadata: Metadata = { title: "Two-factor authentication" };
 export default async function TwoFactorPage({ searchParams }: { searchParams: Promise<{ next?: string | string[] }> }) {
   const { next } = await searchParams;
   const target = afterSignIn(typeof next === "string" ? next : null);
-  if (!pendingChallenge(await getSession())) redirect(signInHref(target));
-  return <TwoFactorForm next={target} />;
+  const s = await getSession();
+  if (!pendingChallenge(s)) redirect(signInHref(target));
+  // a device sign-in (DEC-065) already uses this browser's trust: nothing new to trust
+  return <TwoFactorForm next={target} offerTrust={!s.device} />;
 }

@@ -14,6 +14,7 @@ import { DetailNotFound } from "@/components/detail-not-found";
 import { RoleChips } from "@/components/role-chips";
 import { LoadingShape } from "@/components/route-skeleton";
 import { SessionsTable } from "@/components/sessions-table";
+import { TrustedDevicesPanel } from "@/components/trusted-devices-panel";
 import { PageHeader } from "@/components/shell/page-header";
 import { api, errorText, isNotFound } from "@/lib/client/api";
 import { useAuth } from "@/lib/client/auth-context";
@@ -22,7 +23,7 @@ import { actionLabel } from "@starterkit/shared/audit";
 import type { ActivityBrief } from "@starterkit/shared/contracts/users";
 import { MODULES, permissionLabel } from "@starterkit/shared/permissions";
 import { activityHistoryHref } from "@/lib/shared/activity-links";
-import { userDetail, userSessions } from "@/lib/shared/queries";
+import { userDetail, userDevices, userSessions } from "@/lib/shared/queries";
 import { BRAND } from "@starterkit/shared/brand";
 import { UserStatusChip } from "./user-columns";
 import { patchUserCache, USERS_KEY, protection, rankBlock, useLastSuperadminId, userGone, useUserDetail } from "./use-users";
@@ -165,6 +166,10 @@ export function UserDetail({ id }: { id: string }) {
         current="Your session" emptyHint="Sessions appear here when this user signs in."
         action={can("user.edit") ? (s) => (s.current ? <span className="text-caption text-fg-3">Your session</span>
           : <ActionMenu label={`Actions for the session on ${s.device}`} actions={[{ id: "end", label: "End session", destructive: true, disabled: !!rank, hint: rank ?? undefined, onSelect: () => setDialog({ end: s }) }]} />) : undefined} />
+      <TrustedDevicesPanel read={userDevices(id)} enabled={!userGone(q.error, deleted)} blocked={rank}
+        revoke={can("user.edit") ? (did) => `/api/users/${encodeURIComponent(id)}/devices/${encodeURIComponent(did)}` : null}
+        description="Browsers that sign in as this user with the one-time code only"
+        emptyHint="A browser appears here when this user ticks Trust this device at sign-in." />
       {can("audit.view") && u.recentActivity && (
       <Panel flush icon={LogIcon} title="Recent activity" description="The last 20 actions on this user" count={u.recentActivity.length}
         actions={<div className="flex flex-wrap items-center gap-2"><span className="text-caption text-fg-3">Activity · Last 90 days</span><Button asChild variant="link" size="sm"><Link href={activityHistoryHref("user", u.id)}>View history<Icon icon={ArrowRightIcon} /></Link></Button></div>}>

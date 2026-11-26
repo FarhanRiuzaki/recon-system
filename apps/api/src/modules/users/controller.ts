@@ -1,13 +1,13 @@
 // /v1/users* (/v1/users/roles is the rbac module's). Query 400 → guard 401/403 → body 400 → 404 → actor rank → rules →
 // change → activity (from 404 on, in service.ts).
 import { Elysia } from "elysia";
-import { SessionListQuery } from "@starterkit/shared/contracts/me";
+import { SessionListQuery, TrustedDeviceListQuery } from "@starterkit/shared/contracts/me";
 import { BulkUserBody, CreateUserBody, SetUserStatusBody, UpdateUserBody, UserListQuery } from "@starterkit/shared/contracts/users";
 import { ApiError, notFound } from "../../kernel/errors";
 import { body, idParam } from "../../kernel/parse";
-import { guard, sessionPage } from "../auth";
+import { guard, sessionPage, trustedDevicePage } from "../auth";
 import {
-  bulkUsers, createUser, editUser, endSessionOf, removeUser, resetUserPassword, setUserStatus, userDetail, userExists, userFacets, userPage,
+  bulkUsers, createUser, editUser, endSessionOf, removeUser, revokeDeviceOf, resetUserPassword, setUserStatus, userDetail, userExists, userFacets, userPage,
 } from "./service";
 
 const OK = { ok: true } as const;
@@ -57,6 +57,17 @@ export const usersController = () =>
       if (!(await userExists(id))) throw notFound("user");
       return sessionPage(id, query, ctx.sid);
     }, { query: SessionListQuery, guard: "user.view" })
+    /** One page of a user's trusted devices (DEC-065), last used first unless `sort` says otherwise. */
+    .get("/v1/users/:id/devices", async ({ params, query }) => {
+      const id = idParam(params.id, "user");
+      if (!(await userExists(id))) throw notFound("user");
+      return trustedDevicePage(id, query);
+    }, { query: TrustedDeviceListQuery, guard: "user.view" })
+    /** Revoke one trusted device of a user. A device that isn't theirs answers like an unknown one. */
+    .delete("/v1/users/:id/devices/:did", async ({ ctx, params }) => {
+      await revokeDeviceOf(ctx, params.id, params.did);
+      return OK;
+    }, { guard: "user.edit" })
     /** End one session of another user. A session that isn't theirs answers like an unknown one. */
     .delete("/v1/users/:id/sessions/:sid", async ({ ctx, params }) => {
       await endSessionOf(ctx, params.id, params.sid);

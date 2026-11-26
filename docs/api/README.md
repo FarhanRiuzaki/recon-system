@@ -288,6 +288,7 @@ only: the stored snapshots, JSON DTO, CSV column order, filters and formula-safe
 | `user.assign_role` | Role assigned | user | `{ roles }` | `{ roles }` (bulk assign) |
 | `user.reset_password` | Password reset by admin | user | – | – (the temporary password is never recorded) |
 | `user.session_end` | User session ended | user | – | `{ session: device }` |
+| `user.device_revoke` | User trusted device removed | user | – | `{ device: label }` |
 | `role.create` | Role created | role | – | `{ name, added: permissions, removed: [] }` |
 | `role.update` | Role updated | role | `{ name }` (before) | `{ name, added, removed }` (effective change only) |
 | `role.delete` | Role deleted | role | `{ name, permissions }` | – |
@@ -297,6 +298,7 @@ only: the stored snapshots, JSON DTO, CSV column order, filters and formula-safe
 | `me.connect` | Account connected | user (self) | – | `{ provider }` |
 | `me.disconnect` | Account disconnected | user (self) | `{ provider }` | – |
 | `me.session_end` | Own session ended | session (label: device) | – | – |
+| `me.device_revoke` | Own trusted device removed | device (label: device) | – | – |
 | `me.2fa_setup` | Two-factor setup started | user (self) | – | – (the secret is never recorded) |
 | `me.2fa_enable` | Two-factor turned on | user (self) | – | – (recovery codes are never recorded) |
 | `me.2fa_disable` | Two-factor turned off | user (self) | – | – |
@@ -416,7 +418,9 @@ endpoint adds to the guard's 401/403 and the 400 for an invalid body or query.
 | Method | Path | Permission | Request | Answer | Errors |
 |---|---|---|---|---|---|
 | POST | `/api/auth/login` | none, same-origin | [LoginBody](schemas/LoginBody.json) | [LoginResult](schemas/LoginResult.json): `/login/2fa[?next=…]` when a second factor is due | `invalid_credentials` (unknown user, wrong password and wrong method answer alike), `account_inactive`, `rate_limited` |
-| POST | `/api/auth/2fa` | pending 2FA, same-origin | [TwoFactorBody](schemas/TwoFactorBody.json) (TOTP or recovery code, each works once) | [LoginResult](schemas/LoginResult.json) | `unauthenticated` (no or expired pending sign-in), `invalid_code`, `account_inactive`, `rate_limited` |
+| POST | `/api/auth/2fa` | pending 2FA, same-origin | [TwoFactorBody](schemas/TwoFactorBody.json) (TOTP or recovery code, each works once; `trust` after a password trusts this browser: the web keeps the token in `sk_device`, logs `device_trusted`; a device sign-in re-checks its trust, else `unauthenticated`) | [LoginResult](schemas/LoginResult.json) | `unauthenticated` (no or expired pending sign-in), `invalid_code`, `account_inactive`, `rate_limited` |
+| POST | `/api/auth/device` | none, same-origin; the browser's `sk_device` cookie | [DeviceLoginBody](schemas/DeviceLoginBody.json) without `tokens` (the web adds the cookie's): sign in with this browser's trust instead of a password (DEC-065); goes through the sign-in limits like a password | [LoginResult](schemas/LoginResult.json): `/login/2fa[?next=…]` when this browser trusts that account, else `{ password: true }` (the same for an unknown login, no trust here, an inactive account and one without two-factor authentication) | `rate_limited` |
+| POST | `/api/auth/device/forget` | none, same-origin; the browser's `sk_device` cookie | [ForgetDeviceBody](schemas/ForgetDeviceBody.json) with `slot` (the account's place in the sign-in page's list) in place of `token`: "Forget on this device" (logs `device_revoked`) | `{ forgotten }` | none |
 | POST | `/api/auth/logout` | none, same-origin; `x-csrf-token` with a full session | none | [OkDto](schemas/OkDto.json) | `csrf` |
 | POST | `/api/auth/forgot` | none, same-origin | [ForgotPasswordBody](schemas/ForgotPasswordBody.json) | [OkDto](schemas/OkDto.json), the same for an unknown email and for a throttled request | none |
 | POST | `/api/auth/reset` | none, same-origin | [ResetPasswordBody](schemas/ResetPasswordBody.json) (the token is spent on first use; the user's sessions end; logs `password_reset`) | [OkDto](schemas/OkDto.json) | `invalid_code` (expired, used, LDAP or inactive user) |
@@ -435,6 +439,8 @@ endpoint adds to the guard's 401/403 and the 400 for an invalid body or query.
 | POST | `/api/me/password` | signed in | [ChangePasswordBody](schemas/ChangePasswordBody.json) (other sessions end; reset links are spent) | [OkDto](schemas/OkDto.json) | `ldap_password`, `invalid_credentials` (400), `rate_limited` |
 | POST | `/api/me/reauth` | signed in | [ReauthBody](schemas/ReauthBody.json) (`password`; `recoveryCode` for an account without a password, spent) | [OkDto](schemas/OkDto.json); this session counts as proved for 10 minutes (no activity entry) | `bad_request` (wrong kind of proof; no password and no 2FA: sign in again), `invalid_credentials` (400), `invalid_code`, `rate_limited` |
 | GET | `/api/me/sessions` | signed in | [SessionListQuery](schemas/SessionListQuery.json) | [SessionPage](schemas/SessionPage.json) | none |
+| GET | `/api/me/devices` | signed in | [TrustedDeviceListQuery](schemas/TrustedDeviceListQuery.json) | [TrustedDevicePage](schemas/TrustedDevicePage.json) (live trusts only) | none |
+| DELETE | `/api/me/devices/{id}` | signed in | none (logs `device_revoked` in the sign-in log too) | [OkDto](schemas/OkDto.json) | `not_found` (also for another user's device or an ended trust) |
 | DELETE | `/api/me/sessions/{id}` | signed in | none | [OkDto](schemas/OkDto.json) | `not_found` (also for another user's session), `self_action` (the current session) |
 | GET | `/api/me/views` | signed in | [SavedViewListQuery](schemas/SavedViewListQuery.json) (`path` = the list page; a space's page, `/spaces/{id}/members`, keeps its own views) | [SavedViewPage](schemas/SavedViewPage.json) | none |
 | POST | `/api/me/views` | signed in | [CreateSavedViewBody](schemas/CreateSavedViewBody.json) | [SavedViewDto](schemas/SavedViewDto.json) | `duplicate` (a view of that name on that page, any case), `bad_request` (20 views on that page already) |
@@ -620,6 +626,8 @@ endpoint adds to the guard's 401/403 and the 400 for an invalid body or query.
 | DELETE | `/api/users/{id}` | `user.delete` | none | [OkDto](schemas/OkDto.json) | `not_found`, `forbidden` (actor rank), `self_action`, `last_superadmin`, `last_space_admin` |
 | POST | `/api/users/{id}/reset-password` | `user.edit` | none (the user's sessions end) | [TemporaryPasswordDto](schemas/TemporaryPasswordDto.json) (shown once, never logged) | `not_found`, `forbidden` (actor rank), `self_action`, `ldap_password` |
 | GET | `/api/users/{id}/sessions` | `user.view` | [SessionListQuery](schemas/SessionListQuery.json) | [SessionPage](schemas/SessionPage.json) | `not_found` |
+| GET | `/api/users/{id}/devices` | `user.view` | [TrustedDeviceListQuery](schemas/TrustedDeviceListQuery.json) | [TrustedDevicePage](schemas/TrustedDevicePage.json) (live trusts only) | `not_found` |
+| DELETE | `/api/users/{id}/devices/{did}` | `user.edit` | none (logs `device_revoked` in the sign-in log too) | [OkDto](schemas/OkDto.json) | `not_found` (also when the device isn't that user's), `forbidden` (actor rank) |
 | DELETE | `/api/users/{id}/sessions/{sid}` | `user.edit` | none | [OkDto](schemas/OkDto.json) | `not_found` (also when the session isn't that user's), `forbidden` (actor rank), `self_action` |
 | GET | `/api/users/{id}/spaces` | `space.view` | [UserSpaceListQuery](schemas/UserSpaceListQuery.json) | [UserSpacePage](schemas/UserSpacePage.json) (rows are [UserSpaceDto](schemas/UserSpaceDto.json): a space the user is in, with their `roles` there; served by the spaces module) | `not_found` |
 | POST | `/api/users/{id}/status` | `user.edit` | [SetUserStatusBody](schemas/SetUserStatusBody.json) (deactivating ends the user's sessions and spends their links) | [UserDto](schemas/UserDto.json) | `not_found`, `forbidden` (actor rank), `self_action`, `last_superadmin`, `last_space_admin` (deactivating) |

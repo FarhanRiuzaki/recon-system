@@ -23,7 +23,7 @@ const README = readFileSync(path.join(import.meta.dir, "../../../../docs/api/REA
 
 /** Routes the API has that the README does not list (internal: the web's page guards, login page and OAuth routes call them). */
 const API_ONLY = [
-  "GET /v1/auth/context", "GET /healthz", "GET /readyz", "GET /v1/auth/providers",
+  "GET /v1/auth/context", "POST /v1/auth/devices", "GET /healthz", "GET /readyz", "GET /v1/auth/providers",
   "POST /v1/auth/oauth/{provider}/start", "POST /v1/auth/oauth/{provider}/callback",
 ];
 /** README rows that are web routes only: the browser's side of the OAuth flow (it calls the API's start and callback). */

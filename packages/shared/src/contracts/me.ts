@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { SAVED_VIEW_QUERY_MAX } from "../views";
-import { SAVED_VIEW_SORTS, SESSION_SORTS } from "../paging";
+import { SAVED_VIEW_SORTS, SESSION_SORTS, TRUSTED_DEVICE_SORTS } from "../paging";
 import { Password } from "./auth";
 import { ListQuery, sortParam } from "./common";
 import { UserDto } from "./users";
@@ -26,6 +26,24 @@ export type SessionDto = z.infer<typeof SessionDto>;
 /** GET /api/me/sessions and GET /api/users/[id]/sessions: one user's sessions, paged (no `q`). */
 export const SessionListQuery = ListQuery.omit({ q: true }).extend({ sort: sortParam(SESSION_SORTS) });
 export type SessionListQuery = z.infer<typeof SessionListQuery>;
+
+/**
+ * A browser the user trusts (DEC-065): it signs in with the one-time code only. `expiresAt`: 30 days after the last
+ * use, never past 90 days after it was trusted.
+ */
+export const TrustedDeviceDto = z.object({
+  id: z.string(),
+  label: z.string(),
+  ip: z.string(),
+  createdAt: z.string(),
+  lastUsedAt: z.string(),
+  expiresAt: z.string(),
+});
+export type TrustedDeviceDto = z.infer<typeof TrustedDeviceDto>;
+
+/** GET /api/me/devices and GET /api/users/[id]/devices: one user's trusted devices, paged (no `q`). */
+export const TrustedDeviceListQuery = ListQuery.omit({ q: true }).extend({ sort: sortParam(TRUSTED_DEVICE_SORTS) });
+export type TrustedDeviceListQuery = z.infer<typeof TrustedDeviceListQuery>;
 
 /** `currentPassword` (the directory password for LDAP users) is required when `email` changes. */
 export const UpdateProfileBody = z.object({

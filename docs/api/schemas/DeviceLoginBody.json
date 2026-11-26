@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DeviceLoginBody",
+  "type": "object",
+  "properties": {
+    "login": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 254
+    },
+    "tokens": {
+      "maxItems": 5,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64
+      }
+    },
+    "next": {
+      "type": "string",
+      "maxLength": 2048
+    }
+  },
+  "required": [
+    "login",
+    "tokens"
+  ]
+}

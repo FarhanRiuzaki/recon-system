@@ -905,3 +905,24 @@ pool DEC-047.
 - **Kunci** pindah dari "closed" ke "signed off": run manual, rollback run, pull ulang snapshot dan rollback pull
   ditolak hanya untuk tanggal yang signed off; item tanggal signed off keluar dari pool.
 - Health source tidak lagi memakai grace recon; deadline per tanggal dari recon = jam `from` jendela (offset ≥ 1).
+
+## DEC-065 — Sign-in with a trusted device: login → one-time code
+
+26 November 2026 — owner standard `docs/standards/sign-in-trusted-device.md` (relayed by the mega-sdd session; reference
+implementation MEGA-SDD Console `feat/trusted-device`). Design: `docs/superpowers/2026-11-26-trusted-device-design.md`.
+
+- After a full sign-in (password, then the one-time code with "Trust this device", on by default) the same browser signs
+  in with the account (picked from up to 5 remembered ones, or its NIP typed) and the one-time code only. The device
+  replaces the password; two factors remain. Only an account with two-factor authentication can trust a browser.
+- `trusted_devices` (auth): token SHA-256, user, label, IP, created, last used, `expires_at` (30 days after the last
+  use) and `cap_at` (90 days); `bound_hash` ties it to the password hash and TOTP secret it was made under. ≤ 5 per
+  user, the oldest evicted. The web keeps the tokens in the sealed `sk_device` cookie, which sign-out leaves.
+- No enumeration: `POST /v1/auth/device` answers `{ password: true }` for every case without a live trust; it passes the
+  sign-in gate like a password. The code step's limits and backoff are the same on both paths.
+- Revoked on a password change or reset, an admin reset, 2FA turned on or off and deactivation; by the user (Sessions
+  page) and an admin (user page); "Forget on this device" at sign-in. Every create and revoke is in the sign-in log
+  (`device_trusted`, `device_revoked`), every use a sign-in with method `device`; the page revocations also write
+  `me.device_revoke` / `user.device_revoke` activity.
+- Open: the directory gateway checks passwords only, so an account disabled in the directory but still active here can
+  use a live trust until it ends (≤ 30 days idle) or the account is deactivated here.
+- Tests: `apps/api/src/modules/auth/tests/integration/devices.test.ts`, `apps/web/src/app/api/auth/auth-routes.test.ts`.

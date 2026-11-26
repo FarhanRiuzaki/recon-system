@@ -24,7 +24,11 @@ import { createHash } from "node:crypto";
 import { oauthCookieOptions } from "@/lib/server/oauth";
 import { parseConfig } from "@/lib/server/config";
 import { cookieOf, fakeApi, pathOf, sealCookie, TEST_CSRF, TEST_TOKEN } from "@/test/session";
+import { sealData, unsealData } from "iron-session";
+import { DEVICE_COOKIE } from "@/lib/server/device";
 import { POST as twoFactor } from "./2fa/route";
+import { POST as deviceLogin } from "./device/route";
+import { POST as forgetDevice } from "./device/forget/route";
 import { POST as forgot } from "./forgot/route";
 import { POST as login } from "./login/route";
 import { POST as logout } from "./logout/route";
@@ -44,7 +48,7 @@ afterEach(() => vi.unstubAllGlobals());
 describe("/api/auth (cookie and same origin in Next; credentials checked by the API)", () => {
   it("POSTs from another origin are 403 forbidden and never reach the API", async () => {
     const seen = fakeApi(() => Response.json({ ok: true }));
-    for (const h of [login, twoFactor, logout, forgot, reset]) {
+    for (const h of [login, twoFactor, logout, forgot, reset, deviceLogin, forgetDevice]) {
       const r = await post(h, LOGIN, { origin: "https://evil.example" });
       expect(r.status).toBe(403);
       expect(((await r.json()) as { error: { code: string } }).error.code).toBe("forbidden");
@@ -155,6 +159,74 @@ describe("/api/auth (cookie and same origin in Next; credentials checked by the 
     expect(await (await post(forgot, { email: "a@example.com" })).json()).toEqual({ ok: true });
     expect((await post(reset, { token: "x", password: "Another-Pass-456!" })).status).toBe(400);
     expect(seen.map(pathOf)).toEqual(["/v1/auth/forgot", "/v1/auth/reset"]);
+  });
+});
+
+/** The trusted-device cookie (DEC-065): seal `tokens` into the jar, read them back. */
+const sealDevices = async (tokens: string[]) => jar.set(DEVICE_COOKIE, await sealData({ tokens }, { password: process.env.SESSION_SECRET!, ttl: 3600 }));
+const devicesOf = async () => {
+  const v = jar.get(DEVICE_COOKIE);
+  return v ? (await unsealData<{ tokens?: string[] }>(v, { password: process.env.SESSION_SECRET! })).tokens ?? [] : null;
+};
+
+describe("/api/auth/device (trusted device sign-in, DEC-065)", () => {
+  it("sends the cookie's tokens with the login; a trust stores the challenge marked device, the browser gets only next", async () => {
+    await sealDevices(["d1", "d2"]);
+    const seen = fakeApi(() => Response.json({ next: "/login/2fa", challenge: "ch" }));
+    const r = await post(deviceLogin, { login: "twofa", next: "/users", tokens: ["forged"] });
+    expect(await r.json()).toEqual({ next: "/login/2fa" });
+    expect(seen.map(pathOf)).toEqual(["/v1/auth/device"]);
+    expect(await seen[0]!.json()).toEqual({ login: "twofa", next: "/users", tokens: ["d1", "d2"] }); // never the body's tokens
+    expect(await cookieOf(jar)).toMatchObject({ challenge: "ch", device: true });
+  });
+
+  it("no trust: { password: true } and the cookie stays as it was", async () => {
+    fakeApi(() => Response.json({ password: true }));
+    const r = await post(deviceLogin, { login: "nobody" });
+    expect(await r.json()).toEqual({ password: true });
+    expect(await cookieOf(jar)).toBeNull();
+  });
+
+  it("a rate limit passes through with Retry-After", async () => {
+    fakeApi(() => fail(429, "rate_limited", { "retry-after": "30" }));
+    const r = await post(deviceLogin, { login: "twofa" });
+    expect([r.status, r.headers.get("retry-after")]).toEqual([429, "30"]);
+  });
+
+  it("the code step with trust keeps the new device token in sk_device (httpOnly, strict), next to the live ones", async () => {
+    await sealCookie(jar, { challenge: "ch", challengeAt: Date.now() });
+    await sealDevices(["dead", "live"]);
+    const seen = fakeApi((r) => pathOf(r) === "/v1/auth/devices"
+      ? Response.json({ accounts: [{ slot: 1, name: "B", login: "b" }] })
+      : Response.json({ next: "/", token: "t", device: "fresh" }));
+    const r = await post(twoFactor, { code: "123456", trust: true });
+    expect(await r.json()).toEqual({ next: "/" }); // the token never reaches the browser's script
+    expect(seen.map(pathOf)).toEqual(["/v1/auth/2fa", "/v1/auth/devices"]);
+    expect(await devicesOf()).toEqual(["live", "fresh"]);
+    expect(cookieOpts.get(DEVICE_COOKIE)).toMatchObject({ httpOnly: true, sameSite: "strict", path: "/" });
+  });
+
+  it("sign-out leaves sk_device", async () => {
+    await sealCookie(jar);
+    await sealDevices(["d1"]);
+    fakeApi(() => Response.json({ ok: true }));
+    await post(logout, {}, { "x-csrf-token": TEST_CSRF });
+    expect(await devicesOf()).toEqual(["d1"]);
+  });
+
+  it("forget sends the slot's token with the login and drops it only when the API forgot it", async () => {
+    await sealDevices(["d1", "d2"]);
+    let forgotten = false;
+    const seen = fakeApi(() => Response.json({ forgotten }));
+    await post(forgetDevice, { slot: 1, login: "b" });
+    expect(await seen[0]!.json()).toEqual({ token: "d2", login: "b" });
+    expect(await devicesOf()).toEqual(["d1", "d2"]);
+    forgotten = true;
+    expect(await (await post(forgetDevice, { slot: 1, login: "b" })).json()).toEqual({ forgotten: true });
+    expect(await devicesOf()).toEqual(["d1"]);
+    // a slot the cookie doesn't hold never reaches the API
+    expect(await (await post(forgetDevice, { slot: 7, login: "b" })).json()).toEqual({ forgotten: false });
+    expect(seen).toHaveLength(2);
   });
 });
 

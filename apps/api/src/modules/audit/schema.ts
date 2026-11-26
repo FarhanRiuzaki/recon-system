@@ -34,8 +34,8 @@ export const authLog = pgTable("auth_log", {
   device: text("device").notNull(),
   location: text("location"),
 }, (t) => [
-  check("auth_log_event_check", sql`event in ('login_success', 'password_ok', 'login_failed', 'logout', '2fa_success', '2fa_failed', 'password_reset')`),
-  check("auth_log_method_check", sql`method in ('password', 'ldap', 'google', 'apple')`),
+  check("auth_log_event_check", sql`event in ('login_success', 'password_ok', 'login_failed', 'logout', '2fa_success', '2fa_failed', 'password_reset', 'device_trusted', 'device_revoked')`),
+  check("auth_log_method_check", sql`method in ('password', 'ldap', 'google', 'apple', 'device')`),
   index("auth_log_at").on(t.at.desc().nullsFirst(), t.id.desc().nullsFirst()),
   index("auth_log_user").on(t.userId, t.at.desc().nullsFirst()),
   index("auth_log_event").on(t.event, t.at.desc().nullsFirst()),

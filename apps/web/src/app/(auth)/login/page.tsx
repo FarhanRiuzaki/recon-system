@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { afterSignIn } from "@starterkit/ui/lib/safe-path";
 import { LoginForm } from "@/features/auth/login-form";
+import { trustedAccounts } from "@/lib/server/device";
 import { oauthProviders } from "@/lib/server/oauth";
 
 export const metadata: Metadata = { title: "Sign in" };
@@ -14,7 +15,7 @@ const ERRORS: Record<string, string> = {
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string | string[]; error?: string | string[] }> }) {
   const { next, error } = await searchParams;
   return (
-    <LoginForm next={afterSignIn(typeof next === "string" ? next : null)} providers={await oauthProviders()}
+    <LoginForm next={afterSignIn(typeof next === "string" ? next : null)} providers={await oauthProviders()} accounts={await trustedAccounts()}
       error={typeof error === "string" ? (ERRORS[error] ?? null) : null} />
   );
 }

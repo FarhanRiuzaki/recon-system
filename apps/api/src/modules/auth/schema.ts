@@ -3,7 +3,7 @@ import { check, foreignKey, index, integer, pgTable, text, timestamp, uuid } fro
 import { bytea } from "../../kernel/columns";
 import { users } from "../users/schema";
 
-const METHOD_CHECK = sql`method in ('password', 'ldap', 'google', 'apple')`;
+const METHOD_CHECK = sql`method in ('password', 'ldap', 'google', 'apple', 'device')`;
 
 export const sessions = pgTable("sessions", {
   id: uuid("id").primaryKey(),
@@ -24,6 +24,28 @@ export const sessions = pgTable("sessions", {
   index("sessions_expires_at").on(t.expiresAt),
 ]);
 
+/**
+ * A browser an account trusts (DEC-065): with it the account signs in with its one-time code only, the device standing
+ * in for the password. Only the token's hash is stored. Live while `expires_at` (30 days after the last use) and `cap_at`
+ * (90 days after creation) are ahead and `bound_hash` still matches the user's password hash and TOTP secret.
+ */
+export const trustedDevices = pgTable("trusted_devices", {
+  id: uuid("id").primaryKey(),
+  tokenHash: bytea("token_hash").notNull().unique("trusted_devices_token_hash_key"),
+  userId: uuid("user_id").notNull(),
+  label: text("label").notNull(),
+  ip: text("ip").notNull(),
+  boundHash: bytea("bound_hash").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  capAt: timestamp("cap_at", { withTimezone: true }).notNull(),
+}, (t) => [
+  foreignKey({ name: "trusted_devices_user_id_fkey", columns: [t.userId], foreignColumns: [users.id] }).onDelete("cascade"),
+  index("trusted_devices_user_id").on(t.userId),
+  index("trusted_devices_expires_at").on(t.expiresAt),
+]);
+
 /** A sign-in waiting for its second factor. */
 export const authChallenges = pgTable("auth_challenges", {
   id: uuid("id").primaryKey(),
@@ -31,10 +53,13 @@ export const authChallenges = pgTable("auth_challenges", {
   userId: uuid("user_id").notNull(),
   method: text("method").notNull(),
   next: text("next"),
+  /** The trusted device this sign-in started from (method `device`): the code step re-checks it. */
+  deviceId: uuid("device_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
 }, (t) => [
   foreignKey({ name: "auth_challenges_user_id_fkey", columns: [t.userId], foreignColumns: [users.id] }).onDelete("cascade"),
+  foreignKey({ name: "auth_challenges_device_id_fkey", columns: [t.deviceId], foreignColumns: [trustedDevices.id] }).onDelete("cascade"),
   check("auth_challenges_method_check", METHOD_CHECK),
   index("auth_challenges_user_id").on(t.userId),
 ]);
