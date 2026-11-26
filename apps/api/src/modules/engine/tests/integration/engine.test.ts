@@ -8,7 +8,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import type { SourceSpec } from "@starterkit/shared/contracts/sources";
 import type { SQL } from "bun";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { sourceTestTables } from "../../../../../scripts/source-test-seed";
 import { appRoleDb } from "../../../../../test/helpers/app-role";
 import { holdTx, truncateAll } from "../../../../../test/helpers/db";
@@ -19,8 +19,7 @@ import { ensureMonthPartitions } from "../../../../kernel/partitions";
 import { ingestHandlers, records } from "../../../ingest";
 import { reconConfigVersions } from "../../../recon";
 import { calendars, sourceShares } from "../../../sources";
-import { matchGroups, matchMembers, reconDays, reconItems, reconRuns } from "../../schema";
-import { closeDay } from "../../breaks";
+import { matchGroups, matchMembers, reconItems, reconRuns } from "../../schema";
 import { classifyUnmatched, runRecon } from "../../service";
 import { spaces, withSpace } from "../../../spaces";
 import { ccyEq, D, D1, gateSource, gateSpec, makeSource, plainSource, put, range, recon, ref, spec, U } from "../fixtures";
@@ -81,34 +80,44 @@ describe("the Plan 3 gate: source1 vs source2 of recon_source_test, 2–5 Nov 20
     const run = await runRecon(probe, { ...gate, mode: "manual", from: "2026-11-02", to: "2026-11-05" });
     console.log(`gate run 2–5 Nov: ${Math.round(performance.now() - t0)} ms`);
     firstRun = run.runId;
+    // DEC-064: what a date's step leaves unpaired is unmatch at once, so nothing waits at the run's end, and pass 3's
+    // pairs a day apart (its earlier member unmatch by then) are proposals on that unmatch, not suggested groups
     expect(run.counters).toEqual({
-      intake: side(1000), replaced: side(0), passes: { 1: pass(937, 0, 30, 10), 2: pass(0, 14, 0, 0), 3: pass(0, 10, 0, 0) }, open: side(24),
+      intake: side(1000), replaced: side(0), passes: { 1: pass(937, 0, 30, 10), 2: pass(0, 14, 0, 0), 3: pass(0, 0, 0, 0) }, open: side(0),
     });
 
     const groups = await groupsOf(gate.configId);
     const auto = groups.filter((g) => g.kind === "auto"), p2 = groups.filter((g) => g.pass === 2), p3 = groups.filter((g) => g.pass === 3);
-    expect([auto.length, p2.length, p3.length, groups.length]).toEqual([937, 14, 10, 961]);
+    expect([auto.length, p2.length, p3.length, groups.length]).toEqual([937, 14, 0, 951]);
     expect(auto.every((g) => g.pass === 1 && g.refs[0] === g.refs[1] && g.sides.join() === "a,b")).toBe(true);
     expect(refsOf(auto)).toEqual(range(1, 940, [931, 932, 933]));
     expect(p2.every((g) => g.kind === "suggested" && g.refs[0] === g.refs[1] && g.amounts[1]! - g.amounts[0]! === 50000n)).toBe(true);
     expect(refsOf(p2)).toEqual(range(941, 955, [950]));
-    expect(p3.every((g) => g.kind === "suggested" && g.refs[0] === g.refs[1])).toBe(true);
-    expect(refsOf(p3)).toEqual(range(956, 965));
+    const proposed = await db.select({ ref: records.extRef, side: reconItems.side, other: reconItems.proposedItemId }).from(reconItems)
+      .innerJoin(records, and(eq(records.id, reconItems.recordId), eq(records.businessDate, reconItems.businessDate)))
+      .where(and(eq(reconItems.configId, gate.configId), isNull(reconItems.simRunId), eq(reconItems.status, "break"), eq(reconItems.proposedPass, 3)));
+    // each member of those pairs is unmatch with the other proposed (one click to match them)
+    expect(proposed.map((x) => `${x.side}${x.ref}`).sort()).toEqual([...range(956, 965).map((r) => `a${r}`), ...range(956, 965).map((r) => `b${r}`)]);
     // evidence: per predicate passed + delta, how the pair was chosen, the version and run
     expect(p2[0]!.evidence).toMatchObject({
       pass: 2, name: "Amount tolerance", configVersionId: gate.versionId, runId: run.runId, chosen: "mutual unique best",
       predicates: [{ op: "amount_abs_tol", field: "amount_minor", passed: true, delta: 50000 }, { op: "eq", field: "currency", passed: true, delta: null }],
     });
-    expect(p3[0]!.evidence).toMatchObject({ predicates: [{ op: "eq", delta: null }, { op: "date_window", delta: 1 }, { op: "eq" }] });
 
     const items = await itemsOf(gate.configId);
-    const dup = items.filter((i) => i.status === "break");
-    expect([dup.length, new Set(dup.map((i) => i.reason)).size, dup[0]?.reason]).toEqual([30, 1, "Duplicate"]);
+    const dup = items.filter((i) => i.status === "break" && i.reason === "Duplicate");
+    expect(dup.length).toBe(30);
     expect([...new Set(dup.map((i) => i.ref))].sort()).toEqual(range(966, 975));
-    const open = (side: string) => items.filter((i) => i.status === "open" && i.side === side).map((i) => i.ref).sort();
-    expect(open("a")).toEqual([...range(931, 933), ref(950), ...range(976, 995)]);
-    expect(open("b")).toEqual([...range(931, 933), ref(950), ...range(996, 1015)]);
-    expect(items.filter((i) => i.status === "suggested").length).toBe(48);
+    // the rest of the unpaired items: unmatch with the near-miss classifier's reason, nothing open
+    const unmatch = (side: string, reason: string) => items.filter((i) => i.status === "break" && i.side === side && i.reason === reason).map((i) => i.ref).sort();
+    for (const [side, only] of [["a", [...range(956, 965), ...range(976, 995)]], ["b", range(996, 1015)]] as const) {
+      expect(unmatch(side, "Currency differs")).toEqual(range(931, 933));
+      expect(unmatch(side, "Amount differs")).toEqual([ref(950)]);
+      expect(unmatch(side, "No counterpart")).toEqual([...only].sort());
+    }
+    expect(unmatch("b", "Date differs")).toEqual(range(956, 965));
+    expect(items.filter((i) => i.status === "open").length).toBe(0);
+    expect(items.filter((i) => i.status === "suggested").length).toBe(28);
 
     // the per-date strip: a group on its latest member's date, an item without a pair on its own
     const strip = ["2026-11-02", "2026-11-03", "2026-11-04", "2026-11-05"].map((d) => [
@@ -117,29 +126,18 @@ describe("the Plan 3 gate: source1 vs source2 of recon_source_test, 2–5 Nov 20
       dup.filter((i) => i.date === d).length,
     ]);
     expect(strip).toEqual([
-      ["2026-11-02", 312, 5, 7, 8, 12],
-      ["2026-11-03", 313, 8, 8, 8, 9],
-      ["2026-11-04", 312, 7, 9, 8, 9],
-      ["2026-11-05", 0, 4, 0, 0, 0],
+      ["2026-11-02", 312, 5, 0, 0, 12],
+      ["2026-11-03", 313, 5, 0, 0, 9],
+      ["2026-11-04", 312, 4, 0, 0, 9],
+      ["2026-11-05", 0, 0, 0, 0, 0],
     ]);
     expect((await db.select({ status: reconRuns.status }).from(reconRuns).where(eq(reconRuns.id, run.runId)))[0]!.status).toBe("succeeded");
   }, 60_000);
 
-  it("the near-miss classifier: per side 3 currency differs, 1 amount differs, 20 without counterpart; reads only", async () => {
+  it("the near-miss classifier reads only, and finds nothing open once a live run has ended (DEC-064)", async () => {
     const before = await itemsOf(gate.configId);
     const rows = await withSpace({ spaceIds: [A], userId: null }, (tx) => classifyUnmatched(tx, { ...gate, simRunId: null, from: "2026-11-02", to: "2026-11-05" }), probe);
-    const refOf = new Map(before.map((i) => [i.id, i.ref]));
-    const per = (side: string, reason: string) => rows.filter((r) => r.side === side && r.reason === reason).map((r) => refOf.get(r.itemId)).sort();
-    for (const [side, only] of [["a", range(976, 995)], ["b", range(996, 1015)]] as const) {
-      expect(per(side, "Currency differs")).toEqual(range(931, 933));
-      expect(per(side, "Amount differs")).toEqual([ref(950)]);
-      expect(per(side, "No counterpart")).toEqual(only);
-      expect(rows.filter((r) => r.side === side).length).toBe(24);
-    }
-    // a near pair is the same reference on the other side; no pair without a counterpart
-    expect(rows.every((r) => (r.reason === "No counterpart") === (r.pairItemId === null))).toBe(true);
-    expect(rows.filter((r) => r.pairItemId).every((r) => refOf.get(r.pairItemId!) === refOf.get(r.itemId) && before.find((i) => i.id === r.pairItemId)!.side !== r.side)).toBe(true);
-    expect(rows.find((r) => refOf.get(r.itemId) === ref(976))?.businessDate).toBe(before.find((i) => i.ref === ref(976))!.date);
+    expect(rows).toEqual([]);
     expect(await itemsOf(gate.configId)).toEqual(before);
   }, 60_000);
 
@@ -147,10 +145,10 @@ describe("the Plan 3 gate: source1 vs source2 of recon_source_test, 2–5 Nov 20
     const before = [await itemsOf(gate.configId), await groupsOf(gate.configId)];
     const again = await runRecon(probe, { ...gate, mode: "rerun", from: "2026-11-02", to: "2026-11-05" });
     expect(again.counters).toEqual({
-      intake: side(0), replaced: side(0), passes: { 1: pass(0, 0, 0, 0), 2: pass(0, 0, 0, 0), 3: pass(0, 0, 0, 0) }, open: side(24),
+      intake: side(0), replaced: side(0), passes: { 1: pass(0, 0, 0, 0), 2: pass(0, 0, 0, 0), 3: pass(0, 0, 0, 0) }, open: side(0),
     });
     expect([await itemsOf(gate.configId), await groupsOf(gate.configId)]).toEqual(before);
-    expect((await groupsOf(gate.configId, firstRun)).length).toBe(961);
+    expect((await groupsOf(gate.configId, firstRun)).length).toBe(951);
   }, 60_000);
 
   it("a simulation of a draft gives the same answer in its own rows and touches no live item", async () => {
@@ -162,44 +160,18 @@ describe("the Plan 3 gate: source1 vs source2 of recon_source_test, 2–5 Nov 20
     expect((await groupsOf(gate.configId, sim.runId)).length).toBe(961);
     expect((await db.select({ n: sql<number>`count(*)::int` }).from(reconItems).where(eq(reconItems.simRunId, sim.runId)))[0]!.n).toBe(2000);
     expect([await itemsOf(gate.configId), await groupsOf(gate.configId)]).toEqual(live);
-    // the near-miss classifier gives the simulation's open items the same reasons and pairs as the live ones
-    const classify = (versionId: string, simRunId: string | null) => withSpace({ spaceIds: [A], userId: null },
-      (tx) => classifyUnmatched(tx, { ...gate, versionId, simRunId, from: "2026-11-02", to: "2026-11-05" }), probe);
-    const byRecord = async (rows: Awaited<ReturnType<typeof classify>>) => {
-      const rec = new Map((await db.select({ id: reconItems.id, rid: reconItems.recordId }).from(reconItems).where(eq(reconItems.configId, gate.configId))).map((x) => [x.id, x.rid]));
-      return rows.map((r) => [rec.get(r.itemId), r.side, r.businessDate, r.reason, r.pairItemId && rec.get(r.pairItemId)]).sort((x, y) => String(x[0]).localeCompare(String(y[0])));
-    };
-    expect(await byRecord(await classify(draft, sim.runId))).toEqual(await byRecord(await classify(gate.versionId, null)));
+    // the near-miss classifier gives the simulation's open items the reasons the live run wrote when it made them unmatch
+    // (DEC-064), but for pass 3's pairs a day apart: suggested in the simulation, unmatch with their pair proposed live
+    const rows = await withSpace({ spaceIds: [A], userId: null }, (tx) => classifyUnmatched(tx, { ...gate, versionId: draft, simRunId: sim.runId, from: "2026-11-02", to: "2026-11-05" }), probe);
+    const rec = new Map((await db.select({ id: reconItems.id, rid: reconItems.recordId }).from(reconItems).where(eq(reconItems.configId, gate.configId))).map((x) => [x.id, x.rid]));
+    const order = (x: unknown[], y: unknown[]) => `${String(x[0])}${String(x[1])}`.localeCompare(`${String(y[0])}${String(y[1])}`);
+    const live2 = await db.select({ rid: reconItems.recordId, side: reconItems.side, date: reconItems.businessDate, reason: reconItems.breakReason }).from(reconItems)
+      .where(and(eq(reconItems.configId, gate.configId), isNull(reconItems.simRunId), eq(reconItems.status, "break"), sql`${reconItems.breakReason} <> 'Duplicate'`, isNull(reconItems.proposedPass)));
+    expect(rows.length).toBe(48);
+    expect(rows.map((r): unknown[] => [rec.get(r.itemId), r.side, r.businessDate, r.reason]).sort(order)).toEqual(live2.map((x) => [x.rid, x.side, x.date, x.reason]).sort(order));
     // a draft never runs live
     const e = await runRecon(probe, { ...gate, versionId: draft, mode: "manual", from: "2026-11-02" }).catch((x: unknown) => x);
     expect((e as Error).message).toBe("Only the published version of a recon runs.");
-  }, 60_000);
-  it("Focus 6: day close turns 24 suggested pairs into breaks with their pass's reason (pairs kept) and 48 open items into breaks with the classifier's", async () => {
-    const after = new Date("2026-12-31T00:00:00+07:00"); // past every close moment and its grace
-    const closed = [];
-    for (const d of ["2026-11-02", "2026-11-03", "2026-11-04", "2026-11-05"]) closed.push(await closeDay(probe, gate, d, after));
-    expect(closed).toEqual(["closed", "closed", "closed", "closed"]);
-    expect(await closeDay(probe, gate, "2026-11-05", after)).toBe("already");
-    const days = await db.select().from(reconDays).where(eq(reconDays.configId, gate.configId)).orderBy(asc(reconDays.businessDate));
-    expect(days.map((d) => d.status)).toEqual(["closed", "closed", "closed", "closed"]);
-    const sum = (k: "open" | "suggested") => days.reduce((n, d) => n + (d.counters as Record<string, number>)[k]!, 0);
-    expect([sum("open"), sum("suggested")]).toEqual([48, 48]);
-    const items = await db.select({ status: reconItems.status, reason: reconItems.breakReason, late: reconItems.lateMatch, ref: records.extRef, side: reconItems.side })
-      .from(reconItems).innerJoin(records, and(eq(records.id, reconItems.recordId), eq(records.businessDate, reconItems.businessDate)))
-      .where(and(eq(reconItems.configId, gate.configId), sql`${reconItems.simRunId} is null`));
-    expect(items.filter((i) => i.status === "open" || i.status === "suggested").length).toBe(0);
-    const by = (reason: string, late: boolean) => items.filter((i) => i.status === "break" && i.reason === reason && i.late === late).map((i) => `${i.side}${i.ref!.slice(-4)}`).sort();
-    expect(by("Amount differs", false).filter((x) => !x.endsWith("0950")).length).toBe(28); // pass 2, 14 pairs
-    expect(by("Date differs", false).length).toBe(20); // pass 3, 10 pairs
-    // a near miss keeps its pair for a person; only "No counterpart" rejoins the pool across days (DEC-047)
-    expect(by("Currency differs", false)).toEqual(["a0931", "a0932", "a0933", "b0931", "b0932", "b0933"]);
-    expect(by("Amount differs", false).filter((x) => x.endsWith("0950"))).toEqual(["a0950", "b0950"]);
-    expect(by("No counterpart", true).length).toBe(40);
-    expect(by("Duplicate", false).length).toBe(30); // the run's own breaks, untouched
-    // the suggested pairs stay as the resolution to accept in one click
-    const kept = await db.select({ n: sql<number>`count(*)::int` }).from(matchGroups)
-      .where(and(eq(matchGroups.configId, gate.configId), sql`${matchGroups.simRunId} is null`, eq(matchGroups.kind, "suggested"), sql`${matchGroups.reversedBy} is null`));
-    expect(kept[0]!.n).toBe(24);
   }, 60_000);
 });
 
@@ -229,20 +201,21 @@ describe("cases on records written directly", () => {
     const tie = groups.find((g) => g.kind === "suggested")!;
     expect([tie.refs, tie.amounts[0]]).toEqual([["K2", "K2"], 500_000n]);
     expect(tie.evidence).toMatchObject({ chosen: "tie broken by business date, event time, record id" });
-    const open = (await itemsOf(r.configId)).filter((i) => i.status === "open");
-    expect(open.map((i) => [i.ref, i.side])).toEqual([["K1", "a"], ["K2", "b"]]);
+    // the two left unpaired are unmatch at the run's end (DEC-064)
+    const left = (await itemsOf(r.configId)).filter((i) => i.status === "break");
+    expect(left.map((i) => [i.ref, i.side, i.reason])).toEqual([["K1", "a", "No counterpart"], ["K2", "b", "No counterpart"]]);
   });
 
   it("A1: an item another transaction holds is skipped; the run succeeds and never waits for it", async () => {
     const [sa, sb] = [await source(A, plainSource()), await source(A, plainSource())];
     await put(sa, [{ ref: "R1", amount: 100n }, { ref: "R2", amount: 200n }]);
     const r = await recon(A, spec(sa.sourceId, sb.sourceId, [gateSpec("", "").passes[0]]));
-    await runRecon(probe, { ...r, mode: "manual", from: D }); // items of side A, open
+    await runRecon(probe, { ...r, mode: "manual", from: D }); // items of side A, unmatch at the run's end (DEC-064)
     await put(sb, [{ ref: "R1", amount: 100n }, { ref: "R2", amount: 200n }]);
     const [held] = (await itemsOf(r.configId)).filter((i) => i.ref === "R1");
     // an operator's change, not committed yet: guarded by state and version, as Plan 5's actions are
-    const hold = await holdTx((tx) => tx.update(reconItems).set({ status: "break", breakReason: "Held", version: sql`${reconItems.version} + 1` })
-      .where(and(eq(reconItems.id, held!.id), eq(reconItems.status, "open"), eq(reconItems.version, held!.version))));
+    const hold = await holdTx((tx) => tx.update(reconItems).set({ breakReason: "Held", version: sql`${reconItems.version} + 1` })
+      .where(and(eq(reconItems.id, held!.id), eq(reconItems.status, "break"), eq(reconItems.version, held!.version))));
     try {
       const run = await runRecon(probe, { ...r, mode: "manual", from: D });
       expect(run.counters.passes).toMatchObject({ 1: { matched: 1, suggested: 0, broken: 0 } });
@@ -251,12 +224,11 @@ describe("cases on records written directly", () => {
     }
     expect(refsOf(await groupsOf(r.configId))).toEqual(["R2"]);
     const items = await itemsOf(r.configId);
-    expect(items.filter((i) => i.ref === "R1").map((i) => [i.side, i.status, i.reason, i.version])).toEqual([["a", "break", "Held", 1], ["b", "open", null, 0]]);
-    // committed meanwhile: the next run reads it as it is now and leaves it
+    expect(items.filter((i) => i.ref === "R1").map((i) => [i.side, i.status, i.reason, i.version])).toEqual([["a", "break", "Held", 2], ["b", "break", "No counterpart", 1]]);
+    // committed meanwhile: the next run reads it as it is now; an unmatch is in every pool (DEC-064), so the pair matches
     await runRecon(probe, { ...r, mode: "manual", from: D });
-    expect((await itemsOf(r.configId)).filter((i) => i.ref === "R1").map((i) => i.status)).toEqual(["break", "open"]);
+    expect((await itemsOf(r.configId)).filter((i) => i.ref === "R1").map((i) => i.status)).toEqual(["matched", "matched"]);
   });
-
   it("A3: three transactions of D and their settlement on D+1 make one N:1 group, across dates within carry over", async () => {
     const [txn, stl] = [await source(A, plainSource()), await source(A, plainSource())];
     await put(txn, [{ ref: "T1", amount: 100n, sref: "ST1" }, { ref: "T2", amount: 250n, sref: "ST1" }, { ref: "T3", amount: 650n, sref: "ST1" }, { ref: "T4", amount: 50n, sref: "ST2" }]);
@@ -272,14 +244,14 @@ describe("cases on records written directly", () => {
     expect(more).toEqual([]);
     expect([g!.kind, g!.date, g!.refs.sort(), g!.sides.sort().join("")]).toEqual(["auto", D1, ["S1", "T1", "T2", "T3"], "aaab"]);
     expect(g!.evidence).toMatchObject({ chosen: "group sum, one counterpart", predicates: [{ op: "eq_sum", sum: 1000, one: 1000, delta: 0, members: 3 }, { op: "eq" }] });
-    // ST2's sum is 50 against 60: it waits
-    expect((await itemsOf(r.configId)).filter((i) => i.status === "open").map((i) => i.ref)).toEqual(["S2", "T4"]);
+    // ST2's sum is 50 against 60: unmatch at the run's end (DEC-064), still in later runs' pools within carry over
+    expect((await itemsOf(r.configId)).filter((i) => i.status !== "matched").map((i) => [i.ref, i.status])).toEqual([["S2", "break"], ["T4", "break"]]);
     // carry over 0: a settlement on D+1 never meets transactions of D
     const r0 = await recon(A, spec(txn.sourceId, stl.sourceId, passes, 0));
     expect((await runRecon(probe, { ...r0, mode: "manual", from: D, to: D1 })).counters.passes).toMatchObject({ 1: { matched: 0, suggested: 0, broken: 0 } });
   });
 
-  it("KSEI S10 (ksei-sample-data.md): one KSEI row and two Medallion rows of a SID break as Duplicate; S09 and S11 wait", async () => {
+  it("KSEI S10 (ksei-sample-data.md): one KSEI row and two Medallion rows of a SID break as Duplicate; S09 and S11 are unmatch", async () => {
     const sid = (n: number) => `TSTSID0000000${String(n).padStart(2, "0")}`;
     const [ksei, medallion] = [await source(A, plainSource()), await source(A, plainSource())];
     await put(ksei, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => ({ acct: sid(n), ref: `K${n}` })));
@@ -288,10 +260,9 @@ describe("cases on records written directly", () => {
       { no: 1, name: "SID", cardinality: "1:1", blocking: [], accept: "auto", on_ambiguous: "break", predicates: [{ op: "eq", field: "account_ref" }] },
     ], 0));
     const run = await runRecon(probe, { ...r, mode: "daily", from: D });
-    expect(run.counters).toMatchObject({ intake: { a: 10, b: 11 }, replaced: { a: 0, b: 0 }, passes: { 1: { matched: 8, suggested: 0, broken: 3 } }, open: { a: 1, b: 1 } });
+    expect(run.counters).toMatchObject({ intake: { a: 10, b: 11 }, replaced: { a: 0, b: 0 }, passes: { 1: { matched: 8, suggested: 0, broken: 3 } }, open: { a: 0, b: 0 } });
     const items = await itemsOf(r.configId);
-    expect(items.filter((i) => i.status === "break").map((i) => [i.ref, i.reason])).toEqual([["K10", "Duplicate"], ["M10", "Duplicate"], ["M10", "Duplicate"]]);
-    expect(items.filter((i) => i.status === "open").map((i) => i.ref)).toEqual(["K9", "M11"]);
+    expect(items.filter((i) => i.status === "break").map((i) => [i.ref, i.reason])).toEqual([["K10", "Duplicate"], ["K9", "No counterpart"], ["M10", "Duplicate"], ["M10", "Duplicate"], ["M11", "No counterpart"]]);
   });
 
   it("Focus 4: a recon of space B reads a source of A shared to it, never one that is not; its rows are B's", async () => {
@@ -335,7 +306,7 @@ describe("cases on records written directly", () => {
     expect((await itemsOf(r.configId)).filter((i) => i.ref === "Y").map((i) => i.reason)).toEqual(Array(5).fill("Duplicate"));
   });
 
-  it("I2: a competitor another transaction holds still competes: nothing of its key is matched or broken until it is free", async () => {
+  it("I2: a competitor another transaction holds still competes: nothing of its key is matched or called a Duplicate until it is free", async () => {
     const [ksei, medallion] = [await source(A, plainSource()), await source(A, plainSource())];
     const r = await recon(A, spec(ksei.sourceId, medallion.sourceId, [
       { no: 1, name: "SID", cardinality: "1:1", blocking: [], accept: "auto", on_ambiguous: "break", predicates: [{ op: "eq", field: "account_ref" }] },
@@ -351,9 +322,15 @@ describe("cases on records written directly", () => {
     } finally {
       await hold.rollback();
     }
-    expect((await itemsOf(r.configId)).map((i) => i.status)).toEqual(["open", "open", "open"]);
+    // unpaired at each run's end, so unmatch "No counterpart" meanwhile (DEC-064), K10 too
+    expect((await itemsOf(r.configId)).map((i) => [i.ref, i.status, i.reason])).toEqual([["K10", "break", "No counterpart"], ["M10", "break", "No counterpart"], ["M10b", "break", "No counterpart"]]);
+    // free now: the key's three meet in the pool and take the pass's reason
     await runRecon(probe, { ...r, mode: "daily", from: D });
     expect((await itemsOf(r.configId)).map((i) => [i.ref, i.reason])).toEqual([["K10", "Duplicate"], ["M10", "Duplicate"], ["M10b", "Duplicate"]]);
+    // a run again changes nothing
+    const before = await itemsOf(r.configId);
+    await runRecon(probe, { ...r, mode: "daily", from: D });
+    expect(await itemsOf(r.configId)).toEqual(before);
   });
 
   it("I3: a side that negates its amounts meets the other's opposite booking; a batch nets its refund; members keep their own sign", async () => {
@@ -383,7 +360,7 @@ describe("cases on records written directly", () => {
     expect(grp!.evidence).toMatchObject({ predicates: [{ op: "eq_sum", sum: 300, one: 300, delta: 0, members: 3 }, { op: "eq" }] });
   });
 
-  it("I6: an open item whose record was replaced closes and stops counting; the new record is a new item", async () => {
+  it("I6: an item whose record was replaced closes and stops counting, unmatch or open; the new record is a new item", async () => {
     const [sa, sb] = [await source(A, plainSource()), await source(A, plainSource())];
     const [old] = await put(sa, [{ ref: "P", amount: 100n }]);
     const r = await recon(A, spec(sa.sourceId, sb.sourceId, exact()));
@@ -391,8 +368,9 @@ describe("cases on records written directly", () => {
     const [fresh] = await put(sa, [{ ref: "P", amount: 120n }]);
     await db.update(records).set({ supersededBy: fresh! }).where(eq(records.id, old!));
     const run = await runRecon(probe, { ...r, mode: "manual", from: D });
-    expect(run.counters).toMatchObject({ intake: { a: 1, b: 0 }, replaced: { a: 1, b: 0 }, open: { a: 1, b: 0 } });
-    expect((await itemsOf(r.configId)).map((i) => [i.status, i.reason, i.version])).toEqual([["closed", "Source row replaced", 1], ["open", null, 0]]);
+    expect(run.counters).toMatchObject({ intake: { a: 1, b: 0 }, replaced: { a: 1, b: 0 }, open: { a: 0, b: 0 } });
+    // the old one was unmatch since the first run's end (DEC-064); the new one is unmatch at this run's end
+    expect((await itemsOf(r.configId)).map((i) => [i.status, i.reason, i.version])).toEqual([["closed", "Source row replaced", 2], ["break", "No counterpart", 1]]);
   });
 
   it("REC-FUT-15: a match whose record was replaced is reversed (source_changed), its items reopen, the new record pairs again", async () => {

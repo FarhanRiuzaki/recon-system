@@ -1,20 +1,20 @@
-// Today and Live day (REC-F4, spec §9 "Freshness", §11a): each active recon's current business date as its last live
-// run left it, its day state, freshness and open breaks, and the sources it reads. The day's numbers are that run's
-// RunDay (recon_runs.days, written when it finalized, again after a close): a screen read never counts items (S1: ~18M
+// Today and Live day (REC-F4, spec §9 "Freshness", §11a): each active recon's current business date (the date its
+// schedule works on today, DEC-064) as its last live run left it, the date's sign-off stage, freshness and open breaks,
+// and the sources it reads. The day's numbers are that run's RunDay (recon_runs.days, written when it finalized): a
+// screen read never counts items (S1: ~18M
 // a side a day), so the numbers move once per run, as §11a's "animates once per tick". A handful of queries for every
 // recon of the space at once, all under the viewer's withSpace (RLS).
 import { postingAttention } from "../integrations";
 import { type LiveReconDto, ReconSpec, type ReconLiveDto, type ReconTrendDto, RunDay, type TodayDto } from "@starterkit/shared/contracts/recon";
 import { TODAY_RECONS_MAX, TREND_DAYS } from "@starterkit/shared/recon";
-import { and, count, desc, eq, inArray, isNotNull, isNull, max, min, ne, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNotNull, isNull, max, ne, or, sql } from "drizzle-orm";
 import type { InTx } from "../../kernel/db";
 import { ApiError, notFound } from "../../kernel/errors";
 import type { Ctx } from "../auth";
-import { todayIn } from "../ingest";
 import { reconConfigs, reconConfigVersions } from "../recon";
 import { liveSources } from "../sources";
 import { withSpace } from "../spaces";
-import { lastDue, staleNow } from "./rules";
+import { currentDate, staleNow } from "./rules";
 import { reconAlerts, reconDays, reconItems, reconRuns } from "./schema";
 
 const SCHEDULED = ["tick", "daily"];
@@ -53,7 +53,7 @@ export function reconTrend(ctx: Ctx, configId: string, now = new Date()): Promis
       .where(and(eq(reconConfigVersions.spaceId, spaceId), eq(reconConfigVersions.configId, configId), eq(reconConfigVersions.status, "published")));
     if (!v) throw new ApiError("invalid_state", "This recon has no approved version running yet. Its days show here once a version is approved.");
     const spec = ReconSpec.parse(v.spec);
-    const last = spec.schedule.kind === "interval" ? todayIn(now) : lastDue(spec, now);
+    const last = currentDate(spec, now);
     const dates = Array.from({ length: TREND_DAYS }, (_, i) => new Date(Date.parse(`${last}T00:00:00Z`) - (TREND_DAYS - 1 - i) * 86_400_000).toISOString().slice(0, 10));
     const r = reconRuns;
     const days = [];
@@ -81,16 +81,13 @@ async function liveRecons(tx: InTx, spaceId: string, only: string | null, now: D
   const ids = pub.map((p) => p.id);
   const list = pub.map((p) => {
     const spec = ReconSpec.parse(p.spec);
-    return { ...p, spec, date: spec.schedule.kind === "interval" ? todayIn(now) : lastDue(spec, now) };
+    return { ...p, spec, date: currentDate(spec, now) };
   });
   const inCfg = <C extends typeof reconRuns.configId | typeof reconDays.configId | typeof reconItems.configId | typeof reconAlerts.configId | typeof v.configId>(col: C) => inArray(col, ids);
 
-  const first = new Map((await tx.select({ id: v.configId, at: min(v.publishedAt) }).from(v)
-    .where(and(eq(v.spaceId, spaceId), inCfg(v.configId))).groupBy(v.configId)).map((r) => [r.id, r.at]));
+  // each date's sign-off stage (no row = open)
   const days = await tx.select({ id: reconDays.configId, date: reconDays.businessDate, status: reconDays.status }).from(reconDays)
     .where(and(eq(reconDays.spaceId, spaceId), inCfg(reconDays.configId), or(...list.map((c) => and(eq(reconDays.configId, c.id), eq(reconDays.businessDate, c.date))))));
-  const closed = new Map((await tx.select({ id: reconDays.configId, d: sql<string>`max(${reconDays.businessDate})::text` }).from(reconDays)
-    .where(and(eq(reconDays.spaceId, spaceId), inCfg(reconDays.configId), eq(reconDays.status, "closed"))).groupBy(reconDays.configId)).map((r) => [r.id, r.d]));
   const r = reconRuns;
   const live = and(eq(r.spaceId, spaceId), inCfg(r.configId), ne(r.mode, "simulation"), isNull(r.baselineOf));
   const success = new Map((await tx.select({ id: r.configId, at: max(r.finishedAt) }).from(r)
@@ -111,14 +108,13 @@ async function liveRecons(tx: InTx, spaceId: string, only: string | null, now: D
     const stored = Array.isArray(cov?.days) ? (cov.days as unknown[]).find((d) => (d as { date?: string }).date === c.date) : undefined;
     const day = stored ? RunDay.safeParse(stored) : null;
     const lastSuccess = success.get(c.id) ?? null;
-    const since = lastSuccess ?? new Date(`${todayIn(first.get(c.id) ?? now)}T00:00:00+07:00`);
     const state = days.find((d) => d.id === c.id)?.status;
     return {
       id: c.id, name: c.name, schedule: c.spec.schedule, date: c.date,
       sides: [{ label: c.spec.sides[0].label, sourceId: c.spec.sides[0].source_id }, { label: c.spec.sides[1].label, sourceId: c.spec.sides[1].source_id }],
-      state: state === "closed" || state === "closing" ? state : "open",
+      state: state === "prepared" || state === "signed" ? state : "open",
       day: day?.success ? day.data : null, runId: day?.success ? cov!.runId : null, runAt: day?.success ? cov!.at?.toISOString() ?? null : null,
-      lastSuccessAt: lastSuccess?.toISOString() ?? null, stale: staleNow(c.spec, since, closed.get(c.id) ?? null, now),
+      lastSuccessAt: lastSuccess?.toISOString() ?? null, stale: staleNow(c.spec, lastSuccess, now),
       alertedAt: alerts.get(c.id)?.toISOString() ?? null,
       running: run ? { id: run.runId, status: run.status as "queued" | "running", startedAt: run.at.toISOString() } : null,
       openBreaks: breaks.get(c.id) ?? 0,

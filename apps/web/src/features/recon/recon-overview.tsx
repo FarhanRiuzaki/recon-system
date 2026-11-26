@@ -211,9 +211,11 @@ const ReasonBreakdown = dynamic(() => import("./reason-breakdown").then((m) => m
 export function ReconOverview({ spaceId, id, r, runner, configHref }: { spaceId: string; id: string; r: ReconDto; runner: boolean; configHref: string }) {
   const firstQ = reconRunsFirst(spaceId, id);
   const runs = useQuery({ queryKey: firstQ.key, queryFn: () => api<Page<ReconRunDto>>(firstQ.url), enabled: !!r.published, refetchInterval: 30_000 });
-  // the last scheduled start of an interval recon from its own read: the first page of every run can hold none of them
+  // the last scheduled start of a recon whose window runs more than once (ticks) from its own read: the first page of
+  // every run can hold none of them
   const tickQ = reconLastTick(spaceId, id);
-  const ticks = useQuery({ queryKey: tickQ.key, queryFn: () => api<Page<ReconRunDto>>(tickQ.url), enabled: r.published?.spec.schedule.kind === "interval", refetchInterval: 30_000 });
+  const s = r.published?.spec.schedule;
+  const ticks = useQuery({ queryKey: tickQ.key, queryFn: () => api<Page<ReconRunDto>>(tickQ.url), enabled: !!s && s.from !== s.to, refetchInterval: 30_000 });
   if (!r.published) {
     return (
       <Panel><EmptyState icon={ComponentsIcon} title="Not running yet" description="The recon runs once a config checker approves its first version. Its draft, passes and simulation are in Configuration."

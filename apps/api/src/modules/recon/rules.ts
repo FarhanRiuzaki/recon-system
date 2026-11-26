@@ -22,7 +22,7 @@ export type SideSource = { spec: SourceSpecLike | null; currencies: readonly str
 export type Where = { step: "sources" | "matching" | "schedule"; pass: number | null };
 export type ReconCheck = { errors: string[]; gates: string[]; warnings: string[]; where: Map<string, Where> };
 
-const SPOT: Record<string, string> = { measure: "Measure", grace_minutes: "Grace", carry_over_days: "Carry over", close_at: "Close time", schedule: "Schedule" };
+const SPOT: Record<string, string> = { measure: "Measure", carry_over_days: "Carry over", schedule: "Schedule" };
 /**
  * A spot of the spec in the builder's words: `passes.1.predicates.0…` → "Pass 2, condition 1", `passes.1.blocking.0` →
  * "Pass 2, matching key 1", `passes.1.when.0` → "Pass 2, rule condition 1", `sides.1…` → "Side B, filter 1"; a
@@ -151,8 +151,8 @@ export function checkReconSpec(spec: ReconSpec, sources: readonly [SideSource, S
 
     const window = Math.max(0, ...p.predicates.map((q) => (q.op === "date_window" || q.op === "bday_window" ? q.days : 0)));
     // carry over always (null) checks unmatch on every run: no window is too wide for it
-    if (spec.schedule.kind === "daily" && spec.carry_over_days !== null && window > spec.carry_over_days) {
-      add(gates, `Pass ${p.no} allows dates ${days(window)} apart, but carry over is ${days(spec.carry_over_days)}: ${p.cardinality === "1:1" ? "pairs" : "groups"} across days never meet in a daily run. Set carry over to ${days(window)}.`, "schedule", p.no);
+    if (spec.carry_over_days !== null && window > spec.carry_over_days) {
+      add(gates, `Pass ${p.no} allows dates ${days(window)} apart, but carry over is ${days(spec.carry_over_days)}: ${p.cardinality === "1:1" ? "pairs" : "groups"} across days never meet in a run. Set carry over to ${days(window)}.`, "schedule", p.no);
     }
   });
   return { errors, gates, warnings, where };

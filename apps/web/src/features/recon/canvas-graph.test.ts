@@ -11,7 +11,7 @@ const spec: ReconSpec = {
     { no: 2, name: "Amount within 1,000", cardinality: "1:1", blocking: ["ext_ref"], accept: "suggest", on_ambiguous: "break", predicates: [{ op: "amount_abs_tol", field: "amount_minor", tolerance: { IDR: "1000.00" } }, ccy] },
     { no: 3, name: "Date within 1 day", cardinality: "1:1", blocking: ["ext_ref"], accept: "suggest", on_ambiguous: "break", predicates: [{ op: "date_window", field: "business_date", days: 1 }, ccy] },
   ],
-  grace_minutes: 30, carry_over_days: 1, close_at: "23:00", schedule: { kind: "daily", at: "06:00", business_date_offset: 1 },
+  carry_over_days: 1, schedule: { business_date_offset: 1, from: "07:00", to: "16:00", every_minutes: 60 },
 } as ReconSpec;
 const keys = ["p0", "p1", "p2"];
 
@@ -22,7 +22,7 @@ describe("builder canvas graph (DEC-041: locked lanes, fixed columns)", () => {
     expect(lane(0)).toEqual(["source1", "source2"]);
     expect(lane(1)).toEqual(["Side A · source1", "Side B · source2"]);
     expect(lane(2)).toEqual(["1. Exact", "2. Amount within 1,000", "3. Date within 1 day"]);
-    expect(lane(3)).toEqual(["Matched", "Suggested", "Duplicate", "Waiting"]);
+    expect(lane(3)).toEqual(["Matched", "Suggested", "Duplicate", "Unmatch"]);
     expect(g.nodes.find((n) => n.id === "p1")!.select).toEqual({ k: "pass", key: "p1" });
     expect(g.nodes.find((n) => n.id === "side-b")!.select).toEqual({ k: "side", i: 1 });
     expect(g.nodes.find((n) => n.id === "src-a")!.select).toBeNull();
@@ -54,7 +54,7 @@ describe("builder canvas graph (DEC-041: locked lanes, fixed columns)", () => {
     expect(g.edges.find((e) => e.id === "e-p0-Matched")!.label).toContain("937");
     // per-side counts in the node lines, never on an edge (a long label would run over a node)
     expect(g.nodes.find((n) => n.id === "side-a")!.line).toBe("All records · 1,000 in");
-    expect(g.nodes.find((n) => n.id === "out-unmatched")!.line).toBe("24 source1 · 24 source2; unmatch at day close");
+    expect(g.nodes.find((n) => n.id === "out-unmatched")!.line).toBe("24 source1 · 24 source2; unmatch after a run");
     expect(g.edges.filter((e) => e.label).every((e) => e.label!.length <= 24)).toBe(true);
   });
 });

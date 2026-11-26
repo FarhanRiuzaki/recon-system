@@ -80,13 +80,13 @@ describe("checkReconSpec", () => {
     expect(check(gate(A, B), [src(1, ["IDR"]), src(2, ["IDR"])]).warnings).toEqual([]);
   });
 
-  it("carry over shorter than a pass's date window blocks submit on a daily schedule only", () => {
+  it("carry over shorter than a pass's date window blocks submit, whatever the schedule (DEC-064); always never does", () => {
     const g = { ...gate(A, B), carry_over_days: 0 };
-    expect(check(g).gates).toEqual(["Pass 3 allows dates 1 day apart, but carry over is 0 days: pairs across days never meet in a daily run. Set carry over to 1 day."]);
-    expect(check({ ...g, schedule: { kind: "interval", every_minutes: 15 } }).gates).toEqual([]);
+    expect(check(g).gates).toEqual(["Pass 3 allows dates 1 day apart, but carry over is 0 days: pairs across days never meet in a run. Set carry over to 1 day."]);
+    expect(check({ ...g, carry_over_days: null }).gates).toEqual([]);
     const wide = gate(A, B);
     wide.passes[2]!.predicates[1] = { op: "bday_window", field: "business_date", days: 3 } as never;
-    expect(check(wide).gates).toEqual(["Pass 3 allows dates 3 days apart, but carry over is 1 day: pairs across days never meet in a daily run. Set carry over to 3 days."]);
+    expect(check(wide).gates).toEqual(["Pass 3 allows dates 3 days apart, but carry over is 1 day: pairs across days never meet in a run. Set carry over to 3 days."]);
   });
 
   it("a field the side's source doesn't have, or of a kind the operator can't take, is an error with its path", () => {
@@ -145,7 +145,7 @@ describe("checkReconSpec", () => {
     expect(settle({ on_ambiguous: "suggest" }).errors).toEqual(only);
     // a group across days is held to carry over as a pair is
     const wide = settle({ predicates: [{ op: "eq_sum", field: "amount_minor" }, { op: "eq", field: "currency" }, { op: "date_window", field: "business_date", days: 2 }] });
-    expect(wide.gates).toEqual(["Pass 4 allows dates 2 days apart, but carry over is 1 day: groups across days never meet in a daily run. Set carry over to 2 days."]);
+    expect(wide.gates).toEqual(["Pass 4 allows dates 2 days apart, but carry over is 1 day: groups across days never meet in a run. Set carry over to 2 days."]);
     // each side names its own field: side A's settlement reference against side B's reference
     expect(settle({ blocking: [{ a: "attrs.settlement_ref", b: "ext_ref" }] }).errors).toEqual([]);
     expect(settle({ blocking: [{ a: "attrs.settlement_ref", b: "attrs.batch" }] }).errors).toEqual(["Pass 4, matching key 1: Source 2 has no field batch."]);

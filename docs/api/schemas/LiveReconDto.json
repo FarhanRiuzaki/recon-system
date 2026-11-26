@@ -50,50 +50,32 @@
       "maxItems": 2
     },
     "schedule": {
-      "oneOf": [
-        {
-          "type": "object",
-          "properties": {
-            "kind": {
-              "type": "string",
-              "const": "interval"
-            },
-            "every_minutes": {
-              "type": "integer",
-              "minimum": -9007199254740991,
-              "maximum": 9007199254740991
-            }
-          },
-          "required": [
-            "kind",
-            "every_minutes"
-          ],
-          "additionalProperties": false
+      "type": "object",
+      "properties": {
+        "business_date_offset": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
         },
-        {
-          "type": "object",
-          "properties": {
-            "kind": {
-              "type": "string",
-              "const": "daily"
-            },
-            "at": {
-              "type": "string"
-            },
-            "business_date_offset": {
-              "type": "integer",
-              "minimum": -9007199254740991,
-              "maximum": 9007199254740991
-            }
-          },
-          "required": [
-            "kind",
-            "at",
-            "business_date_offset"
-          ],
-          "additionalProperties": false
+        "from": {
+          "type": "string"
+        },
+        "to": {
+          "type": "string"
+        },
+        "every_minutes": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
         }
-      ]
+      },
+      "required": [
+        "business_date_offset",
+        "from",
+        "to",
+        "every_minutes"
+      ],
+      "additionalProperties": false
     },
     "date": {
       "type": "string"
@@ -102,8 +84,8 @@
       "type": "string",
       "enum": [
         "open",
-        "closing",
-        "closed"
+        "prepared",
+        "signed"
       ]
     },
     "day": {

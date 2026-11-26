@@ -110,7 +110,7 @@ export function variantFacts(v: VariantSpec, ops: Ops, catalog: readonly Catalog
   const paths = [...order.filter((p) => p in v.mapping), ...Object.keys(v.mapping).filter((p) => !order.includes(p))];
   const label = (k: string) => catalog.find((f) => f.key === k)?.label ?? "A field no longer read";
   const g = v.group;
-  const sent = g?.at === "cutoff" ? `sent at ${g.cutoff ?? "a cutoff not set"} ${APP_TIME_ZONE_LABEL}` : "sent at day close";
+  const sent = g?.at === "cutoff" ? `sent at ${g.cutoff ?? "a cutoff not set"} ${APP_TIME_ZONE_LABEL}` : "sent at the day's sign-off";
   return {
     name: v.name,
     when: v.when ? conditionText(v.when as Condition, catalog) : "Every item",

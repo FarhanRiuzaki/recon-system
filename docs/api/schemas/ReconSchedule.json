@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ReconSchedule",
+  "type": "object",
+  "properties": {
+    "business_date_offset": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 7
+    },
+    "from": {
+      "type": "string",
+      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+    },
+    "to": {
+      "type": "string",
+      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+    },
+    "every_minutes": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1440
+    }
+  },
+  "required": [
+    "business_date_offset",
+    "from",
+    "to",
+    "every_minutes"
+  ],
+  "additionalProperties": false
+}

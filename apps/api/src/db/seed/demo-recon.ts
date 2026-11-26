@@ -1,7 +1,7 @@
 // Demo recon data of Treasury for a trial (db:seed:demo after seedDemo; owner, 24 Nov: "langsung jalan"): two BI-FAST
 // file sources with generated records over the last five business days, a two-way and a one-way (a_to_b) recon over
 // them, a write-off workflow, an Open API connector without credentials, and the recons run through the engine's own
-// job (runAndRefresh: the run, its due dates closed, its days and the dashboard rollup), so Operation result, Unmatch,
+// job (runAndRefresh: the run, which leaves what stays unpaired unmatch, its days and the dashboard rollup), so Operation result, Unmatch,
 // Today, the dashboard and the sidebar counts show data. Then a few unmatch items are assigned and one write-off waits
 // for approval, through the breaks' own functions. Fake data only (generated references and amounts). Deterministic
 // (seeded generator) and idempotent: each step skips what an earlier run made.
@@ -173,7 +173,7 @@ async function setup(db: Tx, o: { spaceId: string; maker: string; checker: strin
   const approvals = ReconApprovalSpec.parse({ changes: { write_off: { actions: [], workflow: { default: { id: wfId, version: 1 }, rules: [] } } } });
   const recon = (direction: "two_way" | "a_to_b") => ReconSpec.parse({
     sides: [{ key: "a", label: "Switch", source_id: src[0]!.id, filter: [] }, { key: "b", label: "Core", source_id: src[1]!.id, filter: [] }],
-    passes: PASSES, grace_minutes: 30, carry_over_days: 1, direction, close_at: "23:00", schedule: { kind: "daily", at: "23:30", business_date_offset: 0 }, approvals,
+    passes: PASSES, carry_over_days: 1, direction, schedule: { business_date_offset: 1, from: "07:00", to: "16:00", every_minutes: 60 }, approvals,
   });
   const recons = [
     { id: id(), versionId: id(), code: DEMO_RECONS.twoWay, name: "BI-FAST outgoing · switch vs core", spec: recon("two_way") },
@@ -220,7 +220,7 @@ async function setup(db: Tx, o: { spaceId: string; maker: string; checker: strin
       });
       // as a publish writes them (recon approveVersion): the fields each side's source must keep, and its health deadline
       const uses = usedFields(r.spec).flatMap((fields, i) => fields.map((field) => ({
-        spaceId: S, configId: r.id, sourceSpaceId: S, sourceId: r.spec.sides[i]!.source_id, field, configName: r.name, graceMinutes: r.spec.grace_minutes, deadline: null,
+        spaceId: S, configId: r.id, sourceSpaceId: S, sourceId: r.spec.sides[i]!.source_id, field, configName: r.name, graceMinutes: null, deadline: r.spec.schedule.from,
       })));
       if (uses.length) await tx.insert(reconSourceUses).values(uses);
     }

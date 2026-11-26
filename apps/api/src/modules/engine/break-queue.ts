@@ -25,7 +25,6 @@ import { users } from "../users";
 import { reconDays, reconItems } from "./schema";
 import { liveSpec, recheckOf } from "./break-resolve";
 import { addDays } from "./service";
-import { NEAR_MISS } from "./sql/breaks";
 
 const inSpace = <T>(ctx: Ctx, fn: (tx: InTx, spaceId: string) => Promise<T>) =>
   withSpace({ spaceIds: [ctx.space!.id], userId: ctx.user.id }, (tx) => fn(tx, ctx.space!.id));
@@ -50,17 +49,17 @@ const inBucket = (today: string, b: AgeBucket) => {
 };
 /**
  * Whether runs look for a break's counterpart again from `today`: recheckOf's rule (the engine pool's, sql/pass.ts
- * poolStatus: a late-match "No counterpart" break waiting for no decision on a day not signed off) on a live version
- * whose carry over is always, or above 0 and not over by today (business date + carry over ≥ today).
+ * poolStatus, DEC-064: every unmatch waiting for no decision on a day not signed off) on a live version whose carry over
+ * is always, or not over by today (business date + carry over ≥ today).
  */
 function checkedAgain(tx: InTx, today: string) {
   const carry = sql`${reconConfigVersions.spec}->'carry_over_days'`, days = sql`(${reconConfigVersions.spec}->>'carry_over_days')::int`;
   return and(
-    eq(reconItems.lateMatch, true), eq(reconItems.breakReason, NEAR_MISS.none), sql`${reconItems.breakState} is distinct from 'pending_approval'`,
+    sql`${reconItems.breakState} is distinct from 'pending_approval'`,
     notExists(tx.select(one).from(reconDays).where(and(eq(reconDays.spaceId, reconItems.spaceId), eq(reconDays.configId, reconItems.configId),
       eq(reconDays.businessDate, reconItems.businessDate), isNotNull(reconDays.signedAt)))),
     exists(tx.select(one).from(reconConfigVersions).where(and(eq(reconConfigVersions.spaceId, reconItems.spaceId), eq(reconConfigVersions.configId, reconItems.configId),
-      eq(reconConfigVersions.status, "published"), sql`(${carry} = 'null'::jsonb or (${days} > 0 and ${reconItems.businessDate} + ${days} >= ${today}::date))`))),
+      eq(reconConfigVersions.status, "published"), sql`(${carry} = 'null'::jsonb or ${reconItems.businessDate} + ${days} >= ${today}::date)`))),
   )!;
 }
 /**

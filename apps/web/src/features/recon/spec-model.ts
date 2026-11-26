@@ -14,12 +14,12 @@ export type Fields = readonly [SideFields, SideFields];
 const AMOUNT = "amount_minor";
 const CURRENCY = "currency";
 
-/** A new recon's first spec: two sides, no pass yet, and daily settings a maker changes in Edit settings. */
+/** A new recon's first spec: two sides, no pass yet, and a schedule a maker changes in Edit settings (DEC-064). */
 export function defaultSpec(a: { id: string; name: string }, b: { id: string; name: string }): ReconSpec {
   const side = (key: "a" | "b", s: { id: string; name: string }): SideSpec => ({ key, label: s.name.slice(0, 64), source_id: s.id, filter: [], amount_sign: "as_is" });
   return {
-    sides: [side("a", a), side("b", b)], passes: [], grace_minutes: 30, carry_over_days: 1, close_at: "23:00",
-    schedule: { kind: "daily", at: "06:00", business_date_offset: 1 },
+    sides: [side("a", a), side("b", b)], passes: [], carry_over_days: 1,
+    schedule: { business_date_offset: 1, from: "07:00", to: "16:00", every_minutes: 60 },
   };
 }
 
@@ -329,16 +329,15 @@ export const currencyGapText = (nos: readonly number[], fields: Fields) =>
   `${cap(passesText(nos))} ${nos.length === 1 ? "compares" : "compare"} amounts in more than one currency without a currency condition. Add “${conditionText({ op: "eq", field: CURRENCY }, fields)}” to ${nos.length === 1 ? "it" : "each pass"}.`;
 
 /**
- * What a daily recon's carry over leaves out, as the API words it (rules.ts, Captain's guardrail), checked as the
- * spec changes rather than after a save: a pass whose date window is wider than carry over.
+ * What a recon's carry over leaves out, as the API words it (rules.ts, Captain's guardrail), checked as the spec changes
+ * rather than after a save: a pass whose date window is wider than carry over.
  */
 export function carryOverGates(spec: ReconSpec): string[] {
-  if (spec.schedule.kind !== "daily") return [];
   return spec.passes.flatMap((p) => {
     const w = Math.max(0, ...p.predicates.map((q) => (q.op === "date_window" || q.op === "bday_window" ? q.days : 0)));
     // always (null) checks unmatch on every run: no window is too wide
     return spec.carry_over_days !== null && w > spec.carry_over_days
-      ? [`Pass ${p.no} allows dates ${daysText(w)} apart, but carry over is ${daysText(spec.carry_over_days)}: ${p.cardinality === "1:1" ? "pairs" : "groups"} across days never meet in a daily run. Set carry over to ${daysText(w)}.`]
+      ? [`Pass ${p.no} allows dates ${daysText(w)} apart, but carry over is ${daysText(spec.carry_over_days)}: ${p.cardinality === "1:1" ? "pairs" : "groups"} across days never meet in a run. Set carry over to ${daysText(w)}.`]
       : [];
   });
 }
@@ -364,19 +363,18 @@ export function placeOf(message: string): Place {
   }
   const side = /^Side ([AB])(?:, filter (\d+))?: (.+)$/s.exec(message);
   if (side) return { side: side[1] === "A" ? 0 : 1, ...(side[2] ? { filter: Number(side[2]) - 1 } : {}), text: side[3]! };
-  const setting = /^(Measure|Grace|Carry over|Close time|Schedule): (.+)$/s.exec(message);
+  const setting = /^(Measure|Carry over|Schedule|Run window start|Run window end): (.+)$/s.exec(message);
   if (setting) return { setting: setting[1]!, text: setting[2]! };
   const loose = /^Pass (\d+) /.exec(message);
   return loose ? { pass: Number(loose[1]), text: message } : { text: message };
 }
 
-/** The settings strip's words (BUILDER-SPEC "Settings strip"). */
+/** The settings strip's words (BUILDER-SPEC "Settings strip", DEC-064: a run window, no day close). */
 export function scheduleText(s: ReconSpec["schedule"]): string {
-  if (s.kind === "interval") return `Every ${plural(s.every_minutes, "minute")}`;
   const date = s.business_date_offset === 0 ? "the same business date" : s.business_date_offset === 1 ? "the business date before" : `${s.business_date_offset} business dates before`;
-  return `Daily at ${s.at} ${APP_TIME_ZONE_LABEL}, for ${date}`;
+  const every = s.every_minutes % 60 === 0 ? plural(s.every_minutes / 60, "hour") : plural(s.every_minutes, "minute");
+  return s.from === s.to ? `Once at ${s.from} ${APP_TIME_ZONE_LABEL}, for ${date}` : `Every ${every} from ${s.from} to ${s.to} ${APP_TIME_ZONE_LABEL}, for ${date}`;
 }
-export const graceText = (m: number) => (m === 0 ? "None" : m % 60 === 0 ? `${plural(m / 60, "hour")}` : `${m} min`);
 export const daysText = (n: number) => plural(n, "day");
 /**
  * A typed time as the spec keeps it (HH:MM, 24 hours), or null: a colon, a dot or no separator, one or two hour digits
@@ -651,14 +649,12 @@ export function measureOptions(fields: Fields, current: string | undefined): { v
   return [{ value: "", label: MEASURE_DEFAULT }, ...refs.map((r) => ({ value: r, label: pairText(r, fields) }))];
 }
 
-export type SettingKey = "schedule" | "grace" | "carry" | "close" | "measure";
+export type SettingKey = "schedule" | "carry" | "measure";
 /** The day's settings in words, one text each: the version review and the recon's Overview both show these. */
 export function settingsFacts(spec: ReconSpec, fields: Fields): { key: SettingKey; label: string; text: string }[] {
   return [
     { key: "schedule", label: "Schedule", text: scheduleText(spec.schedule) },
-    { key: "grace", label: "Grace", text: graceText(spec.grace_minutes) },
     { key: "carry", label: "Carry over", text: carryText(spec.carry_over_days, spec.direction === "a_to_b" ? spec.sides[1].label : undefined) },
-    { key: "close", label: "Day closes", text: `${spec.close_at} ${APP_TIME_ZONE_LABEL}` },
     { key: "measure", label: "Compare amounts by", text: measureText(spec, fields) },
   ];
 }

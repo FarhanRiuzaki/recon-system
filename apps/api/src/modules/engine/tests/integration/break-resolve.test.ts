@@ -92,22 +92,21 @@ describe("carry over on a break's page", () => {
     const [v] = await db.select().from(reconConfigVersions).where(eq(reconConfigVersions.configId, cfg));
     const carry = (c: number | null) => db.update(reconConfigVersions).set({ spec: { ...(v!.spec as object), carry_over_days: c } }).where(eq(reconConfigVersions.id, v!.id));
     const a1 = (o: Partial<typeof reconItems.$inferInsert>) => db.update(reconItems).set(o).where(eq(reconItems.id, I.a1));
-    // a break a run closed without late_match never rejoins the pool
-    expect(await recheck()).toEqual({ kind: "no" });
-    await a1({ lateMatch: true });
+    // every unmatch rejoins the pool (DEC-064), whatever its reason, until business date + carry over
+    expect(await recheck()).toEqual({ kind: "until", date: "2026-11-03" });
+    await a1({ breakState: "assigned", breakReason: "Amount differs" });
     expect(await recheck()).toEqual({ kind: "until", date: "2026-11-03" });
     await carry(null);
     expect(await recheck()).toEqual({ kind: "always" });
+    // carry over 0: its own date's runs only
     await carry(0);
-    expect(await recheck()).toEqual({ kind: "no" });
+    expect(await recheck()).toEqual({ kind: "until", date: "2026-11-02" });
     await carry(1);
-    // waiting for a decision, another reason, or a signed-off day: out of the pool
+    // waiting for a decision, or a signed-off day: out of the pool
     await a1({ breakState: "pending_approval" });
     expect(await recheck()).toEqual({ kind: "no" });
-    await a1({ breakState: "assigned", breakReason: "Amount differs" });
-    expect(await recheck()).toEqual({ kind: "no" });
-    await a1({ breakReason: "No counterpart" });
-    await db.insert(reconDays).values({ spaceId: A, configId: cfg, businessDate: D, status: "closed", closedAt: new Date(), signedAt: new Date(), counters: {} });
+    await a1({ breakState: "assigned", breakReason: "No counterpart" });
+    await db.insert(reconDays).values({ spaceId: A, configId: cfg, businessDate: D, status: "signed", preparedAt: new Date(), signedAt: new Date() });
     expect(await recheck()).toEqual({ kind: "no" });
     await db.delete(reconDays);
     expect(await recheck()).toEqual({ kind: "until", date: "2026-11-03" });

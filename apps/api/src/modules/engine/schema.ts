@@ -57,7 +57,7 @@ export const reconRuns = pgTable("recon_runs", {
   finalizeError: text("finalize_error"),
   /**
    * Per business date and side, the source's complete_through read just before that side's intake of the date
-   * ({ "2026-11-02": { "a": iso | null, "b": iso | null } }): what the run's items are complete through. Day close
+   * ({ "2026-11-02": { "a": iso | null, "b": iso | null } }): what the run's items are complete through. Day close (before DEC-064)
    * judges completeness on it, never on the cursor now (records that came after the intake are not items yet).
    */
   seen: jsonb("seen"),
@@ -102,7 +102,7 @@ export const reconItems = pgTable("recon_items", {
   /** The pass that broke it (on_ambiguous break: Duplicate / Ambiguous); null for another break, and for breaks before 0029. */
   breakPass: smallint("break_pass"),
   /**
-   * A "No counterpart" break (grace or day close, Task 6): within carry over it stays a candidate of every pass of later
+   * A "No counterpart" break (written at a run's end, DEC-064; grace or day close before): within carry over it stays a candidate of every pass of later
    * runs (DEC-047, Captain: only this reason). False for every other break: a near miss (currency, amount or date
    * differs), a pass's ambiguity (Duplicate), an unconfirmed suggestion with its pair kept.
    */
@@ -127,7 +127,7 @@ export const reconItems = pgTable("recon_items", {
   version: integer("version").notNull().default(0),
   simRunId: uuid("sim_run_id"),
   /**
-   * The run whose pass or grace last broke it (or made a one-way side-B item not required); null for a day close's, and
+   * The run whose pass or end (DEC-064; grace before) last broke it (or made a one-way side-B item not required); null for a day close's, and
    * for breaks before 0077. A rollback of that run puts it back to open (rollback.ts).
    */
   breakRunId: uuid("break_run_id"),
@@ -159,26 +159,16 @@ export const reconItems = pgTable("recon_items", {
 ]);
 
 /**
- * A business date of a config once it starts to close (spec §9 "Tutup hari", DEC-043, DEC-046): no row = open;
- * `closing` = its close time passed while a side's source was not complete through the date's end (it waits up to
- * close + grace_minutes); `closed` = its open items became breaks and its unconfirmed suggestions breaks with their
- * pair kept. `incomplete` = the sides whose source was not complete when it closed anyway ("Data incomplete"):
- * [{ side, sourceId, completeThrough }], null when complete. `counters` = the breaks it made { open, suggested }.
- * Sign-off is Plan 5's.
+ * The sign-off of a config's business date (Plan 5 Task 4, spec §11b, DEC-064): no row = open; a reviewer or space admin
+ * prepares it (`prepared`), another one signs it (`signed`: not the preparer, nor anyone who resolved an item of that
+ * day); signed, the day's items are frozen (day_closed) and out of every pass's pool. There is no day close any more
+ * (DEC-064): a run makes what stays unpaired unmatch at once.
  */
 export const reconDays = pgTable("recon_days", {
   spaceId: uuid("space_id").notNull(),
   configId: uuid("config_id").notNull(),
   businessDate: date("business_date").notNull(),
   status: text("status").notNull(),
-  incomplete: jsonb("incomplete"),
-  counters: jsonb("counters"),
-  closingAt: timestamp("closing_at", { withTimezone: true }).notNull().defaultNow(),
-  closedAt: timestamp("closed_at", { withTimezone: true }),
-  /**
-   * Sign-off of a closed day (Plan 5 Task 4, spec §11b): a reviewer or space admin prepares it, another one signs it
-   * (not the preparer, nor anyone who resolved an item of that day); signed, the day's items are frozen (day_closed).
-   */
   preparedBy: uuid("prepared_by"),
   preparedAt: timestamp("prepared_at", { withTimezone: true }),
   signedBy: uuid("signed_by"),
@@ -186,7 +176,7 @@ export const reconDays = pgTable("recon_days", {
 }, (t) => [
   primaryKey({ name: "recon_days_pkey", columns: [t.spaceId, t.configId, t.businessDate] }),
   foreignKey({ name: "recon_days_config_fkey", columns: [t.spaceId, t.configId], foreignColumns: [reconConfigs.spaceId, reconConfigs.id] }).onDelete("cascade"),
-  check("recon_days_status_check", sql`${t.status} in ('closing', 'closed')`),
+  check("recon_days_status_check", sql`${t.status} in ('prepared', 'signed')`),
 ]);
 
 /**

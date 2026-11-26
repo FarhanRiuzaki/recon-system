@@ -52,12 +52,12 @@ describe("deliveryCounts: due by every space's recons, whoever asks", () => {
     // D in at 07:00 the next morning, D1 at 06:00
     await db.insert(sourceDeliveries).values([{ spaceId: A, sourceId: s.id, businessDate: D, completedAt: jkt("2026-11-04T07:00:00") }, { spaceId: A, sourceId: s.id, businessDate: D1, completedAt: jkt("2026-11-05T06:00:00") }]);
     expect((await counts([A], [s])).get(s.id)).toEqual({ onTime: 2, late: 0, missing: 0, unknown: 0 }); // by its own 09:00
-    // B's daily recon runs D on D+1 at 06:00 with 30 min grace: due D+1 06:30, though A can't read B's recon
-    await reader(B, s, { schedule: { kind: "daily", at: "06:00", business_date_offset: 1 }, close_at: "23:00", grace_minutes: 30 });
+    // B's recon runs D on D+1 at 06:00 (its last scheduled run, DEC-064): due D+1 06:00, though A can't read B's recon
+    await reader(B, s, { schedule: { business_date_offset: 1, from: "06:00", to: "06:00", every_minutes: 60 } });
     expect((await counts([A], [s])).get(s.id)).toEqual({ onTime: 1, late: 1, missing: 0, unknown: 0 });
     expect((await counts([B], [s])).get(s.id)).toEqual({ onTime: 1, late: 1, missing: 0, unknown: 0 });
     // a recon's deadline on recon_source_uses (health's input) stricter still: 05:00
-    await reader(B, s, { schedule: { kind: "interval", every_minutes: 15 }, close_at: "23:59", grace_minutes: 1440 }, { deadline: "05:00" });
+    await reader(B, s, { schedule: { business_date_offset: 0, from: "00:00", to: "23:59", every_minutes: 15 } }, { deadline: "05:00" });
     expect((await counts([A], [s])).get(s.id)).toEqual({ onTime: 0, late: 2, missing: 0, unknown: 0 });
   });
 
@@ -65,7 +65,7 @@ describe("deliveryCounts: due by every space's recons, whoever asks", () => {
     const s = await source({ ...ksei(), health: { deadline: "09:00" } });
     await db.insert(sourceDeliveries).values({ spaceId: A, sourceId: s.id, businessDate: D, completedAt: jkt("2026-11-04T07:00:00") });
     await db.update(spaces).set({ status: "archived" }).where(eq(spaces.id, B));
-    await reader(B, s, { schedule: { kind: "daily", at: "06:00", business_date_offset: 1 }, close_at: "23:00", grace_minutes: 30 });
+    await reader(B, s, { schedule: { business_date_offset: 1, from: "06:00", to: "06:00", every_minutes: 60 } });
     expect((await counts([A], [s])).get(s.id)?.onTime).toBe(1);
   });
 

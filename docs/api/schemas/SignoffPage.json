@@ -11,12 +11,6 @@
           "date": {
             "type": "string"
           },
-          "closedAt": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
           "openBreaks": {
             "type": "integer",
             "minimum": -9007199254740991,
@@ -30,7 +24,7 @@
           "stage": {
             "type": "string",
             "enum": [
-              "closed",
+              "open",
               "prepared",
               "signed"
             ]
@@ -108,7 +102,6 @@
         },
         "required": [
           "date",
-          "closedAt",
           "openBreaks",
           "pending",
           "stage",

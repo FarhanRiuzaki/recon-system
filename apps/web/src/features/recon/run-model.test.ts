@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { PassSpec, ReconSpec } from "@starterkit/shared/contracts/recon";
-import { amountText, connectorText, countLine, dayPasses, dayTotals, differenceText, itemsText, passOutcome, pastClose, projectionText, rangeText, reasonCount, recordDates, replayEnd, replayGap, suggestedReplay, runDays, runTotals, sidesText, simView, doneChip, standingTotals, breakCounts, carryOverText, counterpartWindow, lonePairText, pairDifference, reasonOptions, breakPair, breaksOf, breaksText, runLine, runRowChips, rollbackCover, scopeCaption, readIn, runCurrency } from "./run-model";
+import { amountText, connectorText, countLine, dayPasses, dayTotals, differenceText, itemsText, passOutcome, projectionText, rangeText, reasonCount, recordDates, replayEnd, replayGap, suggestedReplay, runDays, runTotals, sidesText, simView, doneChip, standingTotals, breakCounts, carryOverText, counterpartWindow, lonePairText, pairDifference, reasonOptions, breakPair, breaksOf, breaksText, runLine, runRowChips, rollbackCover, scopeCaption, readIn, runCurrency } from "./run-model";
 
 // The Plan 3 gate (docs/recon/source-test-db.md "Kunci jawaban"): pass 1 exact with duplicates, passes 2 and 3 suggest.
 const pass = (no: number, accept: "auto" | "suggest", blocking: string[] = ["ext_ref"]): PassSpec =>
@@ -21,14 +21,6 @@ describe("run-model", () => {
     expect(rangeText("2026-11-20", "2026-11-20")).toBe("20 Nov 2026");
     expect(rangeText("2026-10-30", "2026-11-02")).toBe("30 Oct – 2 Nov 2026");
     expect(rangeText("2026-12-30", "2027-01-02")).toBe("30 Dec 2026 – 2 Jan 2027");
-  });
-
-  it("counts the dates past close: interval at close_at, daily at its run time offset days later (WIB)", () => {
-    const now = Date.parse("2026-11-05T23:10:00+07:00");
-    const interval = { close_at: "23:00", schedule: { kind: "interval", every_minutes: 15 } } as unknown as ReconSpec;
-    expect(pastClose(interval, { from: "2026-11-02", to: "2026-11-06" }, now)).toBe(4); // 2–5 Nov; 6 Nov not yet
-    const daily = { close_at: "23:00", schedule: { kind: "daily", at: "06:00", business_date_offset: 1 } } as unknown as ReconSpec;
-    expect(pastClose(daily, { from: "2026-11-02", to: "2026-11-05" }, now)).toBe(3); // 5 Nov closes 6 Nov 06:00
   });
 
   it("ends a replay after 31 dates or today, whichever is first", () => {

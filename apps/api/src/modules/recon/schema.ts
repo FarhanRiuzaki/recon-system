@@ -70,9 +70,9 @@ export const reconSourceUses = pgTable("recon_source_uses", {
   field: text("field").notNull(),
   configName: text("config_name").notNull(),
   /**
-   * The config's health inputs for the source (Plan 2 carry-over, Task 6): its grace (null when 0) and its daily
-   * deadline, HH:MM Asia/Jakarta: a daily config's run time when it runs a date at least a day later (the date's file
-   * must be there by then), else null. The same on every field row.
+   * The config's health inputs for the source (Plan 2 carry-over, Task 6): its grace (null since DEC-064: a recon has
+   * none) and its daily deadline, HH:MM Asia/Jakarta: the start of its run window when it runs a date at least a day
+   * later (the date's file must be there by then), else null. The same on every field row.
    */
   graceMinutes: integer("grace_minutes"),
   deadline: text("deadline"),

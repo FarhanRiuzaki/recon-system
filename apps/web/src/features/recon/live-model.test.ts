@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { LiveReconDto, LiveSourceDto, TodayDto } from "@starterkit/shared/contracts/recon";
-import { countText, dayCounters, kpiCaption, dayTotals, nextRunText, reasonParts, reconChip, sourceLag, spaceMap, todayKpis } from "./live-model";
+import { countText, dayCounters, kpiCaption, dayTotals, nextRunText, reasonParts, reconChip, scheduleLine, sourceLag, spaceMap, todayKpis } from "./live-model";
 
 const health = (state: "healthy" | "degraded" | "down", o: Partial<NonNullable<LiveSourceDto["health"]>> = {}) =>
   ({ state, businessDate: "2026-11-21", lagSeconds: null, completeThrough: null, reason: null, missingDate: null, lastError: null, lastReadAt: null, ...o });
 const src = (id: string, state: "healthy" | "degraded" | "down", rowsToday = 100): LiveSourceDto => ({ id, name: id.toUpperCase(), kind: "db_watermark", health: health(state), rowsToday });
 const recon = (id: string, a: string, b: string, o: Partial<LiveReconDto> = {}): LiveReconDto => ({
-  id, name: `Recon ${id}`, sides: [{ label: "A", sourceId: a }, { label: "B", sourceId: b }], schedule: { kind: "interval", every_minutes: 2 },
+  id, name: `Recon ${id}`, sides: [{ label: "A", sourceId: a }, { label: "B", sourceId: b }], schedule: { business_date_offset: 0, from: "00:00", to: "23:59", every_minutes: 2 },
   date: "2026-11-21", state: "open", runId: "r1", runAt: null, lastSuccessAt: null, stale: false, alertedAt: null, running: null, openBreaks: 3,
   day: { date: "2026-11-21", passes: { 1: { matched: 937, suggested: 0, broken: 30, brokenRefs: 10 }, 2: { matched: 0, suggested: 14, broken: 0, brokenRefs: 0 } }, open: { a: 24, b: 20 }, breaks: { a: 1, b: 2 }, items: { a: 1000, b: 990 }, closed: false },
   ...o,
@@ -52,7 +52,7 @@ describe("Today and Live day model (REC-F4)", () => {
   it("a source's lag: a pull's minutes behind, else what it is complete through", () => {
     expect(sourceLag({ ...src("s", "healthy"), health: health("healthy", { lagSeconds: 1260 }) })).toBe("21 min behind");
     expect(sourceLag({ ...src("s", "healthy"), health: null })).toBe("Not ingesting yet");
-    expect(reconChip({ ...recon("x", "s1", "s2"), state: "closed" }, new Map())).toEqual({ health: "healthy", label: "Closed" });
+    expect(reconChip({ ...recon("x", "s1", "s2"), state: "signed" }, new Map())).toEqual({ health: "healthy", label: "Signed off" });
   });
 });
 
@@ -81,22 +81,30 @@ describe("Today's KPI tray (audit T1)", () => {
   });
 });
 
-describe("the Run card's next run (audit R5)", () => {
+describe("the Run card's next run (audit R5, DEC-064 windows)", () => {
   const at = (iso: string) => Date.parse(iso);
-  it("an interval recon: its last scheduled start plus the interval, or now once that has passed", () => {
-    const every2 = { kind: "interval" as const, every_minutes: 2 };
+  it("within the window: the slot after the last scheduled start, or now once that has come", () => {
+    const every2 = { business_date_offset: 0, from: "00:00", to: "23:59", every_minutes: 2 };
     // 23 Nov 00:02 WIB = 22 Nov 17:02 UTC
     expect(nextRunText(every2, "2026-11-22T17:02:00.000Z", at("2026-11-22T17:03:00.000Z"))).toBe("Next run due at 00:04 WIB");
     expect(nextRunText(every2, "2026-11-22T17:02:00.000Z", at("2026-11-22T17:05:00.000Z"))).toBe("Next run due now");
     expect(nextRunText(every2, null, at("2026-11-22T17:05:00.000Z"))).toBe("Next run due now");
   });
-  it("a daily recon: today at its time while that is ahead, else tomorrow", () => {
-    const daily = { kind: "daily" as const, at: "06:00", business_date_offset: 1 };
-    expect(nextRunText(daily, null, at("2026-11-22T22:00:00.000Z"))).toBe("Next run at 06:00 WIB today"); // 05:00 WIB
-    expect(nextRunText(daily, null, at("2026-11-23T00:00:00.000Z"))).toBe("Next run at 06:00 WIB tomorrow"); // 07:00 WIB
-    expect(nextRunText(daily, null, at("2026-11-22T23:00:30.000Z"))).toBe("Next run due now"); // 06:00 WIB, its minute
+  it("before the window: its start today; after it, or past its last slot: its start tomorrow", () => {
+    const h1 = { business_date_offset: 1, from: "07:00", to: "16:00", every_minutes: 60 };
+    expect(nextRunText(h1, null, at("2026-11-22T23:00:00.000Z"))).toBe("Next run at 07:00 WIB today"); // 06:00 WIB
+    expect(nextRunText(h1, null, at("2026-11-23T00:00:30.000Z"))).toBe("Next run due now"); // 07:00 WIB, its slot
+    expect(nextRunText(h1, "2026-11-23T00:00:10.000Z", at("2026-11-23T00:30:00.000Z"))).toBe("Next run due at 08:00 WIB");
+    expect(nextRunText(h1, "2026-11-23T09:00:10.000Z", at("2026-11-23T09:30:00.000Z"))).toBe("Next run at 07:00 WIB tomorrow"); // after 16:00's run
+    expect(nextRunText(h1, null, at("2026-11-23T10:00:00.000Z"))).toBe("Next run at 07:00 WIB tomorrow"); // 17:00 WIB
+  });
+  it("the schedule's line names the window and the date it works on", () => {
+    expect(scheduleLine({ business_date_offset: 1, from: "07:00", to: "16:00", every_minutes: 60 })).toBe("Runs every hour from 07:00 to 16:00 WIB for yesterday's date");
+    expect(scheduleLine({ business_date_offset: 1, from: "06:00", to: "06:00", every_minutes: 60 })).toBe("Runs once at 06:00 WIB for yesterday's date");
+    expect(scheduleLine({ business_date_offset: 0, from: "00:00", to: "23:59", every_minutes: 15 })).toBe("Runs every 15 min from 00:00 to 23:59 WIB for today's date");
   });
 });
+
 
 describe("unmatch by reason (audit R2): the queue's reason counts as breakdown parts that add up to the unmatch", () => {
   it("largest first, each reason in the hue of its chip in the Unmatch list (review 24 Nov); items without a reason are a part of their own", () => {

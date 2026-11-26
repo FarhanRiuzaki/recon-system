@@ -8,7 +8,7 @@ import { type Chip, categoryChip, STATES, statusChip } from "@/lib/shared/catego
 import { categoryColor } from "@starterkit/ui/ds/badges";
 
 import type { StatusTone } from "@starterkit/ui/lib/status";
-export const DAY_STATE_LABEL: Record<LiveReconDto["state"], string> = { open: "Open", closing: "Closing", closed: "Closed" };
+export const DAY_STATE_LABEL: Record<LiveReconDto["state"], string> = { open: "Open", prepared: "Prepared", signed: "Signed off" };
 const HEALTH_LABEL: Record<"healthy" | "degraded" | "down", string> = { healthy: "Healthy", degraded: "Degraded", down: "Down" };
 
 /** A source's state for a chip: its health, or Unknown before its first publish. */
@@ -27,7 +27,7 @@ export function sourceLag(s: LiveSourceDto): string {
 export const troubled = (r: LiveReconDto, byId: ReadonlyMap<string, LiveSourceDto>) =>
   r.sides.map((s) => byId.get(s.sourceId)).filter((s): s is LiveSourceDto => !!s?.health && s.health.state !== "healthy");
 
-/** A recon's state for a chip: Stale or affected by a source = Degraded or Down; else its day (Open blue, Closed green). */
+/** A recon's state for a chip: Stale or affected by a source = Degraded or Down; else its day (Open blue, Signed off green). */
 export function reconChip(r: LiveReconDto, byId: ReadonlyMap<string, LiveSourceDto>): Chip {
   if (r.stale) return statusChip("stale", "Stale");
   const bad = troubled(r, byId);
@@ -36,22 +36,35 @@ export function reconChip(r: LiveReconDto, byId: ReadonlyMap<string, LiveSourceD
   return { health: STATES.dayState[r.state], label: DAY_STATE_LABEL[r.state] };
 }
 
-/** "Runs every 2 min" / "Runs daily at 06:00". */
-export const scheduleLine = (s: LiveReconDto["schedule"]) => (s.kind === "interval" ? `Runs every ${formatDuration(s.every_minutes * 60)}` : `Runs daily at ${s.at}`);
+/** Which business date a schedule works on: today's, yesterday's, or N days before today (DEC-064). */
+export const offsetText = (offset: number) => (offset === 0 ? "today's date" : offset === 1 ? "yesterday's date" : `the date ${offset} days before`);
+
+/** "hour", "2 hours", "15 min": how often a window runs. */
+const everyText = (m: number) => (m % 60 === 0 ? (m === 60 ? "hour" : `${m / 60} hours`) : `${m} min`);
+/** "Runs every hour from 07:00 to 16:00 WIB for yesterday's date" / "Runs once at 06:00 WIB for yesterday's date". */
+export const scheduleLine = (s: LiveReconDto["schedule"]) => (s.from === s.to
+  ? `Runs once at ${s.from} ${APP_TIME_ZONE_LABEL} for ${offsetText(s.business_date_offset)}`
+  : `Runs every ${everyText(s.every_minutes)} from ${s.from} to ${s.to} ${APP_TIME_ZONE_LABEL} for ${offsetText(s.business_date_offset)}`);
+
+const MINUTE = 60_000;
+const minutesOf = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
+/** Minutes since midnight in Asia/Jakarta (UTC+7 all year) of `t`. */
+const jakartaMinutes = (t: number) => Math.floor(((t / MINUTE) + 7 * 60) % 1440);
 
 /**
- * When the schedule starts the next run (the Run card, audit R5): an interval recon's last scheduled start (its newest
- * tick run, `reconLastTick`) plus its interval (the schedule looks every minute, so once that has passed it is due now),
- * a daily one's time today, now during its minute, or tomorrow. ponytail: a date waiting for data or a failed run's backoff can hold it longer (engine rules.ts planRun);
- * the API would need the planner's own next moment to say so.
+ * When the schedule starts the next run (the Run card, audit R5; the engine's rules.ts slotAt): within today's window,
+ * the slot after the last scheduled start (from, from + every, … to), due now once that has come; before the window its
+ * start today, after it its start tomorrow. ponytail: a failed run's backoff can hold it longer (engine rules.ts
+ * planRun); the API would need the planner's own next moment to say so.
  */
 export function nextRunText(s: LiveReconDto["schedule"], lastScheduledAt: string | null, now = Date.now()): string {
-  if (s.kind === "daily") {
-    const clock = formatTime(now);
-    return clock === s.at ? "Next run due now" : `Next run at ${s.at} ${APP_TIME_ZONE_LABEL} ${clock < s.at ? "today" : "tomorrow"}`;
-  }
-  const next = lastScheduledAt ? Date.parse(lastScheduledAt) + s.every_minutes * 60_000 : 0;
-  return next > now ? `Next run due at ${formatTime(next)} ${APP_TIME_ZONE_LABEL}` : "Next run due now";
+  const from = minutesOf(s.from), to = minutesOf(s.to), clock = jakartaMinutes(now);
+  if (clock < from) return `Next run at ${s.from} ${APP_TIME_ZONE_LABEL} today`;
+  if (clock > to) return `Next run at ${s.from} ${APP_TIME_ZONE_LABEL} tomorrow`;
+  const slot = now - (clock - from - Math.floor((clock - from) / s.every_minutes) * s.every_minutes) * MINUTE - (now % MINUTE);
+  if (!lastScheduledAt || Date.parse(lastScheduledAt) < slot) return "Next run due now";
+  const next = slot + s.every_minutes * MINUTE;
+  return jakartaMinutes(next) > to || jakartaMinutes(next) < from ? `Next run at ${s.from} ${APP_TIME_ZONE_LABEL} tomorrow` : `Next run due at ${formatTime(next)} ${APP_TIME_ZONE_LABEL}`;
 }
 
 /**

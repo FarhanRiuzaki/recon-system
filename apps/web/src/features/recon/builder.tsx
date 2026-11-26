@@ -7,7 +7,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { type KeyboardEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BlockedButton, FormFooter, Panel, Segmented, StatusChip, Wizard } from "@starterkit/ui/ds";
 import { cn } from "@starterkit/ui/lib/cn";
-import { APP_TIME_ZONE_LABEL, formatNumber } from "@starterkit/ui/lib/format";
+import { formatNumber } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { AddIcon, ChevronDownIcon, EditIcon, FailedIcon, SpinnerIcon, WarningIcon } from "@starterkit/ui/ui/icons";
@@ -27,7 +27,7 @@ import { APPROVALS_KEY, ENGINE_KEY, RECON_KEY } from "@/lib/shared/queries";
 import { reconDetail } from "@/lib/shared/queries-recon";
 import { PassEditor, PlaceError, SettingsEditor, SideEditor } from "./inspector";
 import {
-  addCurrencyCondition, addTemplatePass, carryText, PASS_TEMPLATES, SETUP_STEPS, type SetupStep, stepReasons, passNeeds, type PassTemplate, templateReason, incompleteField, carryOverFix, carryOverGates, currencyGaps, currencyGapText, daysText, type Fields, graceText, moved, movePass,
+  addCurrencyCondition, addTemplatePass, carryText, PASS_TEMPLATES, SETUP_STEPS, type SetupStep, stepReasons, passNeeds, type PassTemplate, templateReason, incompleteField, carryOverFix, carryOverGates, currencyGaps, currencyGapText, daysText, type Fields, moved, movePass,
   insertAt, measureOptions, type Place, placeOf, removePass, restorePass, submitReason,
 } from "./spec-model";
 import { SidesStep } from "./sides-step";
@@ -290,7 +290,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
           focusLater(`rs-${place.side}-label`);
         } else if (place.setting) {
           setSel({ k: "settings" });
-          focusLater({ Grace: "rs-grace", "Carry over": "rs-carry", "Close time": "rs-close" }[place.setting] ?? "rs-at");
+          focusLater({ "Carry over": "rs-carry", "Run window start": "rs-from", "Run window end": "rs-to" }[place.setting] ?? "rs-offset");
         }
         if (onPhone() && (place.pass !== undefined || place.side !== undefined || place.setting)) setSheet(true);
       }
@@ -544,7 +544,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
               return <Banner key={w} tone="warn" action={fix !== null && spec.carry_over_days !== null && spec.carry_over_days < fix
                 ? <Button type="button" variant="secondary" size="sm" onClick={() => change({ ...spec, carry_over_days: fix })}>Set carry over to {daysText(fix)}</Button> : undefined}>{w}</Banner>;
             })}
-            <Panel title="Schedule and day close">
+            <Panel title="Schedule">
               <fieldset disabled={!editable} className="contents"><SettingsEditor spec={spec} place={placed?.setting ? placed : null} onChange={change} onClockProblem={onClockProblem} /></fieldset>
             </Panel>
           </>
@@ -588,17 +588,17 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
                   {passList(true)}
                   <div className="grid gap-3 text-caption text-fg-3 md:grid-cols-2">
                     <div className="grid gap-1 border-l-2 border-line pl-3">
-                      <span className="text-label text-fg-2">Waiting during the day{counters ? ` · ${formatNumber(counters.open.a)} ${spec.sides[0].label} · ${formatNumber(counters.open.b)} ${spec.sides[1].label}` : ""}</span>
-                      <span>Waits {graceText(spec.grace_minutes).toLowerCase()} after the other side is complete · carry over: {carryText(spec.carry_over_days, spec.direction === "a_to_b" ? spec.sides[1].label : undefined).replace(/^./, (x) => x.toLowerCase())}</span>
+                      <span className="text-label text-fg-2">Left without a pair{counters ? ` · ${formatNumber(counters.open.a)} ${spec.sides[0].label} · ${formatNumber(counters.open.b)} ${spec.sides[1].label}` : ""}</span>
+                      <span>A live run makes them unmatch at once; later runs pair them again · carry over: {carryText(spec.carry_over_days, spec.direction === "a_to_b" ? spec.sides[1].label : undefined).replace(/^./, (x) => x.toLowerCase())}</span>
                     </div>
                     <div className="grid gap-1 border-l-2 border-line pl-3">
-                      <span className="text-label text-fg-2">Unmatch at day close</span>
-                      <span className={cn("tabular", sim.dim && "opacity-60")}>{spec.direction === "a_to_b" ? `Items still open at ${spec.close_at} ${APP_TIME_ZONE_LABEL}: ${spec.sides[0].label}'s stay unmatched; ${spec.sides[1].label}'s are not required` : `Items still open at ${spec.close_at} ${APP_TIME_ZONE_LABEL} stay unmatched`} · {projection ? projectionText(projection, [spec.sides[0].label, spec.sides[1].label], [CURRENCY_DIFFERS]) || "none" : DASH}</span>
+                      <span className="text-label text-fg-2">Unmatch after a live run</span>
+                      <span className={cn("tabular", sim.dim && "opacity-60")}>{spec.direction === "a_to_b" ? `${spec.sides[0].label}'s items without a pair are unmatch; ${spec.sides[1].label}'s are not required` : "Items without a pair are unmatch"} · {projection ? projectionText(projection, [spec.sides[0].label, spec.sides[1].label], [CURRENCY_DIFFERS]) || "none" : DASH}</span>
                     </div>
                     {currency && (
                       <div className={cn("grid gap-1 border-l-2 border-down-mark pl-3", sim.dim && "opacity-60")}>
                         <span className="text-label text-down-ink">{CURRENCY_DIFFERS}</span>
-                        <span className="tabular">{currency} · unmatch at day close</span>
+                        <span className="tabular">{currency} · unmatch after a run</span>
                       </div>
                     )}
                   </div>

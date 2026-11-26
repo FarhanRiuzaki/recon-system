@@ -1,7 +1,7 @@
 // Public API of the engine module: its routes (runs and simulations), the worker's job handlers, a run of a recon
 // version (runRecon; createRun + execRun for a run started elsewhere, Task 6's ticks) and its tables (items, runs,
 // match groups and members, days: a business date's close, which recon_source_day_closed reads), which the result screens read; the near-miss classifier (classifyUnmatched: why an open
-// item has no pair, the one rule of day close and simulation).
+// item has no pair, the one rule of a run's end and simulation).
 export { engineController } from "./controller";
 export { engineHandlers } from "./jobs";
 export { NEAR_MISS, type NearMissReason } from "./sql/breaks";
@@ -10,7 +10,7 @@ export { matchGroups, matchMembers, reconDays, reconItems, reconRuns } from "./s
 export { applyBreakChange, breakContextOf, revertBreakRequest } from "./break-requests";
 export { itemsOf } from "./break-resolve";
 export { reopenNotRequired } from "./breaks";
-export { closeMoment } from "./rules";
+export { currentDate, windowOf } from "./rules";
 export { queueBackfill, queuePostingStats, statsJob } from "./stats";
 // the demo seed (db/seed/demo-recon.ts) runs a recon as the worker does and works its breaks as a request would
 export { runAndRefresh } from "./jobs";

@@ -402,40 +402,40 @@ export function SideEditor({ spec, i, fields, sourceName, picker, glance, place,
   );
 }
 
-/** The day's settings (BUILDER-SPEC "Settings strip"): schedule, grace, carry over, close time. */
+/**
+ * The recon's settings (BUILDER-SPEC "Settings strip", DEC-064): its schedule as a run window (the business date it
+ * works on, from, to, every N minutes; no day close) and carry over.
+ */
 /** `onClockProblem`: a time field's text that doesn't read as a time (by field id; null once it does or the field goes). */
 export function SettingsEditor({ spec, place, onChange, onClockProblem }: { spec: ReconSpec; place: Place | null; onChange: (s: ReconSpec) => void; onClockProblem?: (id: string, problem: string | null) => void }) {
   const s = spec.schedule;
   const err = (name: string) => (place?.setting === name ? place.text : null);
   return (
     <div className="grid gap-5">
-      <div className="grid gap-2">
-        <span className="text-label text-fg">Schedule<span aria-hidden="true" className="ml-0.5 text-destructive">*</span></span>
-        <Segmented label="Schedule" value={s.kind} options={[{ value: "daily", label: "Daily" }, { value: "interval", label: "Every few minutes" }]}
-          onChange={(kind) => onChange({ ...spec, schedule: kind === "daily" ? { kind, at: "06:00", business_date_offset: 1 } : { kind, every_minutes: 15 } })} />
+      <div className="grid gap-1">
+        <span className="text-label text-fg">Schedule</span>
+        <span className="text-body-sm text-fg-2">
+          Runs during its window and makes what finds no pair unmatch at once; later runs pair an unmatch again within carry over. There is no day close: a day is done when someone signs it off.
+        </span>
         <PlaceError text={err("Schedule")} />
       </div>
-      {/* two equal columns (S4): when it runs | when the day closes, then grace | carry over; numbers and times keep
-          their own short widths inside them */}
+      {/* two equal columns (S4): which date and how often | the window's start and end, then carry over; numbers and
+          times keep their own short widths inside them */}
       <div className="grid items-start gap-4 sm:grid-cols-2">
-        {s.kind === "daily" ? (
-          <div className="grid gap-4">
-            <ClockField id="rs-at" setting="Runs at" label={`Runs at (${APP_TIME_ZONE_LABEL})`} value={s.at} onProblem={onClockProblem} onChange={(at) => onChange({ ...spec, schedule: { ...s, at } })} />
-            <Field id="rs-offset" label="Business date" required>
-              <Select id="rs-offset" value={s.business_date_offset} className="w-full max-w-60" onChange={(e) => onChange({ ...spec, schedule: { ...s, business_date_offset: Number(e.target.value) } })}>
-                {[0, 1, 2, 3, 4, 5, 6, 7].map((d) => <option key={d} value={d}>{d === 0 ? "The same day" : d === 1 ? "The day before" : `${d} days before`}</option>)}
-              </Select>
-            </Field>
-          </div>
-        ) : (
+        <div className="grid gap-4">
+          <Field id="rs-offset" label="Business date" required>
+            <Select id="rs-offset" value={s.business_date_offset} className="w-full max-w-60" onChange={(e) => onChange({ ...spec, schedule: { ...s, business_date_offset: Number(e.target.value) } })}>
+              {[0, 1, 2, 3, 4, 5, 6, 7].map((d) => <option key={d} value={d}>{d === 0 ? "The same day" : d === 1 ? "The day before" : `${d} days before`}</option>)}
+            </Select>
+          </Field>
           <Field id="rs-every" label="Every (minutes)" required>
             <NumberInput id="rs-every" label="Minutes between runs" min={1} max={1440} className="max-w-32" value={s.every_minutes} onValueChange={(m) => onChange({ ...spec, schedule: { ...s, every_minutes: m === "" ? 1 : m } })} />
           </Field>
-        )}
-        <ClockField id="rs-close" setting="Close time" label={`Day closes at (${APP_TIME_ZONE_LABEL})`} value={spec.close_at} onProblem={onClockProblem} error={err("Close time")} onChange={(close_at) => onChange({ ...spec, close_at })} />
-        <Field id="rs-grace" label="Grace (minutes)" required error={err("Grace")}>
-          <NumberInput id="rs-grace" label="Grace in minutes" min={0} max={1440} className="max-w-32" value={spec.grace_minutes} onValueChange={(m) => onChange({ ...spec, grace_minutes: m === "" ? 0 : m })} />
-        </Field>
+        </div>
+        <div className="grid gap-4">
+          <ClockField id="rs-from" setting="Run window start" label={`From (${APP_TIME_ZONE_LABEL})`} value={s.from} onProblem={onClockProblem} error={err("Run window start")} onChange={(from) => onChange({ ...spec, schedule: { ...s, from } })} />
+          <ClockField id="rs-to" setting="Run window end" label={`To (${APP_TIME_ZONE_LABEL})`} value={s.to} onProblem={onClockProblem} error={err("Run window end")} onChange={(to) => onChange({ ...spec, schedule: { ...s, to } })} />
+        </div>
         {/* owner, 22 Nov: unmatch is data still moving (late data); some recons check it on its day only, some up to
             day + N, some on every run until it matches */}
         <Field id="rs-carry" label="Carry over" required error={err("Carry over")}>

@@ -27,14 +27,14 @@ const touched = (k: RollbackCtx): SQL => sql`grp as materialized (select g.id, g
         and i.break_run_id = any(${runs(k)}) and i.status in ('break', 'not_required'))`;
 
 /**
- * What refuses the rollback, read before it changes anything: `closed` = the first closed business date of a group, a
+ * What refuses the rollback, read before it changes anything: `closed` = the first signed-off business date (DEC-064) of a group, a
  * member or a break it would change (null when none); `held` = whether a change of one of those items waits for a
  * decision (a pending approval request names it). Reads only.
  */
 export function rollbackBlockersSql(k: RollbackCtx): SQL {
   return sql`with ${touched(k)},
   dates as (select bd from touched union select bd from grp)
-  select (select min(d.business_date)::text from ${reconDays} d where d.space_id = ${k.spaceId} and d.config_id = ${k.configId} and d.status = 'closed'
+  select (select min(d.business_date)::text from ${reconDays} d where d.space_id = ${k.spaceId} and d.config_id = ${k.configId} and d.signed_at is not null
       and d.business_date in (select bd from dates)) as closed,
     exists (select 1 from ${approvalRequests} r where r.space_id = ${k.spaceId} and r.status = 'pending'
       and (r.item_id in (select id from touched) or r.item_ids && (select coalesce(array_agg(id), '{}') from touched))) as held`;

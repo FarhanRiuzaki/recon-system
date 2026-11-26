@@ -56,8 +56,6 @@ export const gate = (a: string, b: string) => ({
       predicates: [{ op: "eq" as const, field: "amount_minor" }, { op: "date_window" as const, field: "business_date", days: 1 }, ccyEq],
     },
   ],
-  grace_minutes: 30,
   carry_over_days: 1,
-  close_at: "23:00",
-  schedule: { kind: "daily" as const, at: "23:30", business_date_offset: 0 },
+  schedule: { business_date_offset: 0, from: "00:00", to: "23:59", every_minutes: 60 },
 });

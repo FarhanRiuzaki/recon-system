@@ -63,7 +63,7 @@ export const gateSpec = (a: string, b: string) => ({
     { no: 3, name: "Date window", cardinality: "1:1", blocking: ["ext_ref"], accept: "suggest", on_ambiguous: "suggest",
       predicates: [{ op: "eq", field: "amount_minor" }, { op: "date_window", field: "business_date", days: 1 }, ccyEq] },
   ],
-  grace_minutes: 30, carry_over_days: 1, close_at: "23:00", schedule: { kind: "daily", at: "23:30", business_date_offset: 0 },
+  carry_over_days: 1, schedule: { business_date_offset: 0, from: "00:00", to: "23:59", every_minutes: 60 },
 });
 
 /** A file source (never pulled: its records are written by the test) with core fields and attrs.settlement_ref. */

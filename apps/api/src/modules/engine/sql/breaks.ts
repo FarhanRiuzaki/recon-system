@@ -5,8 +5,8 @@
 import type { PassSpec } from "@starterkit/shared/contracts/recon";
 import { type SQL, sql } from "drizzle-orm";
 import { records } from "../../ingest";
-import { reconDays, reconItems } from "../schema";
-import { candidatesSql, comparedAmount, groupsSql, type StepCtx } from "./pass";
+import { reconItems } from "../schema";
+import { candidatesSql, comparedAmount, groupsSql, RANKED, type StepCtx } from "./pass";
 
 /**
  * Why an ambiguous item broke: "Duplicate" when the pass finds candidates through a key (its matching keys or an
@@ -19,8 +19,7 @@ export const breakReason = (p: PassSpec): string =>
  * Breaks the items of CTE `t` (id, v, bd) as pass `p`'s (`break_pass`, and the run in `break_run_id`, which a rollback of
  * it reads; a one-way recon's side-B items become not required instead, DEC-062); answers the items broken, those of side A, and their
  * distinct references (the records' ext_ref: a Duplicate counts keys, "10 references, 30 items"). Every item it breaks
- * was open or not required, a new break: on a closed date (a carried-over one) it adds to that date's stored open
- * counter, as a sweep's breaks do (REC-FUT-17); no sweep sees it later, it is a break already.
+ * was open or not required, or an unmatch with another reason (DEC-064), which takes the pass's.
  */
 const breakItems = (c: StepCtx, p: PassSpec): SQL => {
   // a one-way recon's side B never breaks (DEC-062): its items of the conflict are not required, still candidates
@@ -28,13 +27,13 @@ const breakItems = (c: StepCtx, p: PassSpec): SQL => {
     ? sql`status = case when i.side = 'b' then 'not_required' else 'break' end, break_reason = case when i.side = 'b' then null else ${breakReason(p)} end,
       break_pass = case when i.side = 'b' then i.break_pass else ${p.no} end`
     : sql`status = 'break', break_reason = ${breakReason(p)}, break_pass = ${p.no}`;
+  // an unmatch in the conflict (DEC-064: the pool holds every one) takes the pass's reason too, unless it has it already
   return sql`all_up as (update ${reconItems} i set ${set}, break_run_id = ${c.runId}::uuid, version = i.version + 1
-    from t x where i.space_id = ${c.spaceId} and i.id = x.id and i.business_date = x.bd and i.status in ('open', 'not_required') and i.version = x.v returning i.record_id, i.business_date, i.side, i.status),
-  up as (select * from all_up where status = 'break')${c.simRunId === null ? sql`,
-  dc as (update ${reconDays} d set counters = jsonb_build_object('open', coalesce((d.counters ->> 'open')::int, 0) + n.n,
-      'suggested', coalesce((d.counters ->> 'suggested')::int, 0))
-    from (select business_date, count(*)::int as n from up group by business_date) n
-    where d.space_id = ${c.spaceId} and d.config_id = ${c.configId} and d.business_date = n.business_date and d.status = 'closed')` : sql``}
+    from t x where i.space_id = ${c.spaceId} and i.id = x.id and i.business_date = x.bd and i.version = x.v
+      and (i.status in ('open', 'not_required') or (i.status = 'break' and i.break_state is distinct from 'pending_approval'
+        and (i.break_reason is distinct from ${breakReason(p)} or i.break_pass is distinct from ${p.no}::smallint)))
+    returning i.record_id, i.business_date, i.side, i.status),
+  up as (select * from all_up where status = 'break')
   select count(*)::int as items, count(*) filter (where up.side = 'a')::int as a, (select count(distinct r.ext_ref)::int from up join ${records} r on r.space_id in (${c.sides[0].sourceSpaceId}, ${c.sides[1].sourceSpaceId})
     and r.id = up.record_id and r.business_date = up.business_date) as refs, (select string_agg(distinct business_date::text, ',') from all_up) as dates from up`;
 };
@@ -49,8 +48,11 @@ export function tieBreakSql(c: StepCtx, p: PassSpec): SQL {
   held as (select a_id as id from c where not a_lk union select b_id from c where not b_lk),
   hop as (select id from held union select b_id from c where a_id in (select id from held) union select a_id from c where b_id in (select id from held)),
   near as (select id from hop union select b_id from c where a_id in (select id from hop) union select a_id from c where b_id in (select id from hop)),
-  t as (select a_id as id, a_v as v, a_bd as bd from c where a_id not in (select id from near)
-    union select b_id, b_v, b_bd from c where b_id not in (select id from near)),
+  ${RANKED},
+  -- a mutual unique best pair is no tie: a suggesting pass leaves an unmatch's one there (DEC-064, its pair proposed)
+  ub as (select a_id as id from r2 where dist = best_a and dist = best_b and n_a = 1 and n_b = 1 union select b_id from r2 where dist = best_a and dist = best_b and n_a = 1 and n_b = 1),
+  t as (select a_id as id, a_v as v, a_bd as bd from c where a_id not in (select id from near) and a_id not in (select id from ub)
+    union select b_id, b_v, b_bd from c where b_id not in (select id from near) and b_id not in (select id from ub)),
   ${breakItems(c, p)}`;
 }
 
@@ -67,7 +69,7 @@ export function groupBreakSql(c: StepCtx, p: PassSpec): SQL {
   ${breakItems(c, p)}`;
 }
 
-/** Why an item without a pair is a break (day close; the plan's "Alasan break saat tutup hari"). */
+/** Why an item without a pair is unmatch (the end of a live run, DEC-064; the plan's "Alasan break saat tutup hari"). */
 export const NEAR_MISS = { currency: "Currency differs", amount: "Amount differs", date: "Date differs", none: "No counterpart" } as const;
 /**
  * A one-way recon's side-B item without a pair (DEC-055, DEC-062): no break, the item becomes `not_required`, whatever
@@ -100,7 +102,7 @@ const sideItems = (c: ClassifyCtx, s: 0 | 1, statuses: SQL, from: SQL, to: strin
 };
 
 /**
- * The near-miss classifier (one rule for day close and simulation, Captain): every open item of business dates
+ * The near-miss classifier (one rule for the end of a live run and simulation, Captain, DEC-064): every open item of business dates
  * `from`..`to` (and `only`, a condition on its `i`, for a few) with the reason it has no pair and, where there is one,
  * its near pair. Reads only. The near pair is the other side's unpaired item (open, break or not required) with the same reference,
  * of the item's date or up to carry over days before it (so a simulation over several dates judges each item as its

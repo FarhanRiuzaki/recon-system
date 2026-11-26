@@ -171,7 +171,7 @@ describe("POST and GET recons", () => {
     const d = await made(body({ spec: { ...gate(S1, S2), carry_over_days: 0 } }));
     // each with the setup step that fixes it (review 24 Nov: the screen groups by step, never by the words)
     expect(d.draft!.warnings).toEqual([
-      { step: "schedule", pass: 3, change: null, text: "Pass 3 allows dates 1 day apart, but carry over is 0 days: pairs across days never meet in a daily run. Set carry over to 1 day." },
+      { step: "schedule", pass: 3, change: null, text: "Pass 3 allows dates 1 day apart, but carry over is 0 days: pairs across days never meet in a run. Set carry over to 1 day." },
       { step: "matching", pass: 2, change: null, text: "USD has no tolerance in pass 2; USD pairs must match exactly." },
     ]);
     expect((await json<ReconDto>(detail(t.op, d.id))).draft!.warnings).toEqual(d.draft!.warnings);
@@ -223,7 +223,7 @@ describe("versions: edit, simulate, submit, approve, reject", () => {
     const none = await step(t.mk, r.id, v, "submit");
     expect([none.status, await message(none)]).toEqual([400, "Run a simulation on this draft first."]);
     await simulated(v);
-    const edited = await json<ReconVersionDto>(patch(t.both, r.id, v, { ...gate(S1, S2), grace_minutes: 45 }));
+    const edited = await json<ReconVersionDto>(patch(t.both, r.id, v, { ...gate(S1, S2), carry_over_days: 2 }));
     expect([edited.makerId, edited.contributorIds]).toEqual([ids.both, [ids.mk, ids.both]]);
     const stale = await step(t.mk, r.id, v, "submit");
     expect([stale.status, await message(stale)]).toEqual([400, "The draft changed after the last simulation. Run it again."]);
@@ -246,7 +246,7 @@ describe("versions: edit, simulate, submit, approve, reject", () => {
     const v2 = await json<ReconVersionDto>(call("POST", `${base(A)}/${r.id}/versions`, { token: t.mk }));
     expect([v2.version, v2.status, v2.specHash]).toEqual([2, "draft", ok.specHash]);
     const n = (await acts()).length;
-    expect((await patch(t.mk, r.id, v2.id, { ...gate(S1, S2), grace_minutes: 45 })).status).toBe(200);
+    expect((await patch(t.mk, r.id, v2.id, { ...gate(S1, S2), carry_over_days: 2 })).status).toBe(200);
     expect((await acts()).length).toBe(n);
     const dup = await call("POST", `${base(A)}/${r.id}/versions`, { token: t.mk });
     expect([dup.status, await code(dup)]).toEqual([409, "duplicate"]);
@@ -260,11 +260,11 @@ describe("versions: edit, simulate, submit, approve, reject", () => {
     expect(one.people.map((p) => p.id).sort()).toEqual([ids.mk, ids.both, ids.ck].sort());
   });
 
-  it("carry over shorter than a daily pass's window saves with a warning and can't be submitted", async () => {
+  it("carry over shorter than a pass's window saves with a warning and can't be submitted", async () => {
     const r = await made();
     const v = r.draft!.id;
     const saved = await json<ReconVersionDto>(patch(t.mk, r.id, v, { ...gate(S1, S2), carry_over_days: 0 }));
-    expect(saved.warnings.map((w) => w.text)).toEqual(["Pass 3 allows dates 1 day apart, but carry over is 0 days: pairs across days never meet in a daily run. Set carry over to 1 day."]);
+    expect(saved.warnings.map((w) => w.text)).toEqual(["Pass 3 allows dates 1 day apart, but carry over is 0 days: pairs across days never meet in a run. Set carry over to 1 day."]);
     await simulated(v);
     const s = await step(t.mk, r.id, v, "submit");
     expect([s.status, await message(s)]).toEqual([400, saved.warnings[0]!.text]);
@@ -412,7 +412,7 @@ describe("approval setup in the recon version (DEC-052 rev 2)", () => {
     const r2 = await made(body({ code: "x2" }));
     const v2 = r2.draft!.id;
     await simulated(v2);
-    expect((await patch(t.mk, r2.id, v2, { ...withApprovals(w), grace_minutes: 45 })).status).toBe(200);
+    expect((await patch(t.mk, r2.id, v2, { ...withApprovals(w), carry_over_days: 2 })).status).toBe(200);
     const stale = await step(t.mk, r2.id, v2, "submit");
     expect([stale.status, await message(stale)]).toEqual([400, "The draft changed after the last simulation. Run it again."]);
   });

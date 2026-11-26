@@ -41,10 +41,10 @@ export function statusChips<K extends string>(table: Record<K, readonly [StatusM
 export const STATES = {
   workState: { new: statusTone("open"), assigned: statusTone("in_progress"), investigating: statusTone("in_progress"), pending_external: statusTone("waiting"),
     proposed_resolution: statusTone("in_progress"), pending_approval: statusTone("waiting"), resolved: statusTone("done") } satisfies Record<BreakState, StatusTone>,
-  // a recon's business date: open and closing are under way, closed is done
-  dayState: { open: statusTone("open"), closing: statusTone("in_progress"), closed: statusTone("done") } satisfies Record<LiveReconDto["state"], StatusTone>,
-  // a closed day's sign-off: waiting for it, prepared, signed off
-  signoffStage: { closed: statusTone("waiting"), prepared: statusTone("in_progress"), signed: statusTone("done") } satisfies Record<SignoffRowDto["stage"], StatusTone>,
+  // a recon's business date (DEC-064: no day close): open while runs work on it, prepared for sign-off, signed off (done)
+  dayState: { open: statusTone("open"), prepared: statusTone("in_progress"), signed: statusTone("done") } satisfies Record<LiveReconDto["state"], StatusTone>,
+  // a business date's sign-off: waiting for it, prepared, signed off
+  signoffStage: { open: statusTone("waiting"), prepared: statusTone("in_progress"), signed: statusTone("done") } satisfies Record<SignoffRowDto["stage"], StatusTone>,
 } as const;
 
 /**

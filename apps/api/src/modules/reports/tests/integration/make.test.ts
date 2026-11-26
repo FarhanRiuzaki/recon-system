@@ -69,7 +69,7 @@ describe("report files", () => {
   it("after a run: one file per template and run, retried or not; ready with its rows, Final only for signed-off dates", async () => {
     await activate();
     const r = await run();
-    await db.insert(reconDays).values({ spaceId: A, configId: CFG, businessDate: D, status: "closed", closedAt: new Date(), signedAt: new Date(), signedBy: Bun.randomUUIDv7() });
+    await db.insert(reconDays).values({ spaceId: A, configId: CFG, businessDate: D, status: "signed", preparedAt: new Date(), signedAt: new Date(), signedBy: Bun.randomUUIDv7() });
     await queueAfterRun(db, A, CFG, r, D, D1);
     await queueAfterRun(db, A, CFG, r, D, D1);
     await drain();

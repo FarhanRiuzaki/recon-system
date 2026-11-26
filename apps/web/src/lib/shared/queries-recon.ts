@@ -29,7 +29,7 @@ export const reconVersion = (spaceId: string, id: string, versionId: string) => 
 });
 /** Runs of a recon belong to the engine module. */
 export type SignoffFilters = { stage: string };
-const SIGNOFF_SPEC: TableSpec<SignoffFilters> = { sorts: SIGNOFF_SORTS, defaultSort: "-date", filters: { stage: oneOf(["", "closed", "prepared", "signed"], "") }, ns: "s" };
+const SIGNOFF_SPEC: TableSpec<SignoffFilters> = { sorts: SIGNOFF_SORTS, defaultSort: "-date", filters: { stage: oneOf(["", "open", "prepared", "signed"], "") }, ns: "s" };
 /** A recon's closed days and their sign-off (Plan 5 Task 4), newest first; its own paging keys (s.page) on the Overview. */
 export const reconSignoffs = (spaceId: string, id: string): TableDef<SignoffFilters> =>
   ({ key: ENGINE_KEY[0], path: `${reconsPath(spaceId)}/${encodeURIComponent(id)}/signoffs`, spec: SIGNOFF_SPEC, transient: ["tab"] });

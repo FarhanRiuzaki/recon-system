@@ -24,8 +24,8 @@ describe("status tones (owner 24 Nov): one map from a status's meaning to its ch
   });
   it("a break's work state, a recon's day and a sign-off stage are statuses: New and open work blue, only done green", () => {
     expect(BREAK_STATES.map((s) => STATES.workState[s])).toEqual(["progress", "progress", "progress", "progress", "progress", "progress", "healthy"]);
-    expect(["open", "closing", "closed"].map((d) => STATES.dayState[d as "open"])).toEqual(["progress", "progress", "healthy"]);
-    expect(["closed", "prepared", "signed"].map((x) => STATES.signoffStage[x as "closed"])).toEqual(["progress", "progress", "healthy"]);
+    expect(["open", "prepared", "signed"].map((d) => STATES.dayState[d as "open"])).toEqual(["progress", "progress", "healthy"]);
+    expect(["open", "prepared", "signed"].map((x) => STATES.signoffStage[x as "open"])).toEqual(["progress", "progress", "healthy"]);
   });
 });
 

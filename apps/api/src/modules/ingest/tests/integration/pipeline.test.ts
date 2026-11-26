@@ -750,7 +750,7 @@ describe("rolling back pulls (owner, 25 Nov: a changed mapping stored the rows p
     expect(await byDay(s)).toEqual(["R1 2026-11-24"]);
     const pulls = await pullsOf(s);
     expect(pulls.map((p) => [p.status, p.rolledBackAt])).toEqual([["new", null], ["failed", null]]);
-    expect(pulls[1]!.error).toBe("Rollback not done: business date 2026-11-24 is closed. Pulling it again needs a rerun request (later release). Nothing was removed.");
+    expect(pulls[1]!.error).toBe("Rollback not done: business date 2026-11-24 is signed off in a recon. Pulling it again needs a rerun request (later release). Nothing was removed.");
     expect((await cursorOf(s))!.rollbackFrom).toBeNull();
   });
 

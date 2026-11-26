@@ -74,7 +74,7 @@ export function specGraph(spec: ReconSpec, keys: readonly string[], counters?: C
   for (const [out, id] of sorted) nodes.push({ id, lane: 3, title: out, line: out === "Matched" ? "Closed" : out === "Suggested" ? "Open until accepted" : "Unmatch to review", select: null });
   if (spec.passes.length) {
     const open = counters ? `${formatNumber(counters.open.a)} ${a.label} · ${formatNumber(counters.open.b)} ${b.label}` : "No counterpart yet";
-    nodes.push({ id: "out-unmatched", lane: 3, title: "Waiting", line: `${open}; unmatch at day close`, select: null });
+    nodes.push({ id: "out-unmatched", lane: 3, title: "Unmatch", line: `${open}; unmatch after a run`, select: null });
     edges.push({ id: "e-last-unmatched", source: keys[spec.passes.length - 1]!, target: "out-unmatched", label: null });
   }
   return { nodes, edges };

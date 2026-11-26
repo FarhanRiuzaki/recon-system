@@ -9,24 +9,22 @@
 // queue they are on (Task 6's ticks start theirs through claimConfig the same way). A run whose job is over while the run
 // is not (its worker died past its retries) is failed by that same check: the reaper runs at the next request of the
 // config, not on a timer.
-import type { ReconRunDto, RollbackRunDto, RunRangeBody } from "@starterkit/shared/contracts/recon";
-import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
+import { type ReconRunDto, ReconSpec, type RollbackRunDto, type RunRangeBody } from "@starterkit/shared/contracts/recon";
+import { and, eq, inArray, isNotNull, isNull, ne, sql } from "drizzle-orm";
 import type { InTx, Tx } from "../../kernel/db";
 import { ApiError, notFound } from "../../kernel/errors";
 import { enqueue, type JobHandler, jobAlive, QUEUE_OPTIONS, type QueueName, QUEUES } from "../../kernel/jobs";
 import { tryConfigLock } from "../../kernel/locks";
 import { log } from "../../kernel/log";
 import { recordActivity } from "../audit";
-import { todayIn } from "../ingest";
 import type { Ctx } from "../auth";
 import { discardDraft, draftToSimulate, markSimulated, reconConfigs, reconConfigVersions } from "../recon";
 import { withSpace } from "../spaces";
-import { lastClosedDay } from "./breaks";
-import { LOOKBACK_DAYS } from "./rules";
+import { currentDate } from "./rules";
 import { dispatch, runScheduled } from "./schedule";
 import { rollbackSet } from "./rollback";
 import { reconDays, reconRuns } from "./schema";
-import { addDays, backfillRun, closedDates, createRun, execRun, failRun, projectDayClose, RANGE_MAX_DAYS, refreshRunDays, queueOf, RUN_INTERNAL_ERROR, RunAborted, type RunMode, runRange, runRow } from "./service";
+import { backfillRun, createRun, execRun, failRun, projectDayClose, RANGE_MAX_DAYS, queueOf, RUN_INTERNAL_ERROR, RunAborted, type RunMode, runRange, runRow } from "./service";
 
 /**
  * How long a run without a job (run in process: runRecon, a test) counts as under way: the longest a job may run.
@@ -37,8 +35,8 @@ import { changesSql } from "./sql/runs";
 import { backfillStats, queueRunStats, statsJob, sweepStats } from "./stats";
 
 
-/** A manual run over a closed business date. */
-export const CLOSED_DAY = "Some of these dates are already closed. Run dates after the last closed day.";
+/** A manual run over a signed-off business date (DEC-064: a signed day is frozen). */
+export const SIGNED_DAY = "Some of these dates are signed off, so their items no longer change. Run dates that aren't signed off.";
 export const RUN_BUSY = "This recon is already running. Wait for that run to finish, then start another.";
 /** A run the reaper finds without a live job. */
 export const RUN_STOPPED = "The run stopped before it finished. Run it again.";
@@ -69,37 +67,36 @@ const inSpace = <T>(ctx: Ctx, fn: (tx: InTx, spaceId: string) => Promise<T>) =>
   withSpace({ spaceIds: [ctx.space!.id], userId: ctx.user.id }, (tx) => fn(tx, ctx.space!.id));
 
 /**
- * The business dates of a request's body `b`: as given (checked before anything is read), or by default one day, the
- * day after the last closed one within the last 30 days (not past today), else today (Asia/Jakarta). A closed day is
- * never run again from here (Captain: that is a rerun with approval, REC-FUT-16).
+ * The business dates of a request's body `b`: as given (checked before anything is read), or by default the date the
+ * published version's schedule works on today (rules.ts currentDate: today − business_date_offset).
  */
 const rangeOf = (b: RunRangeBody) => {
   const given = b.from || b.to ? runRange(b.from, b.to) : null;
-  return async (tx: InTx, spaceId: string, configId: string) => {
-    if (given) return given;
-    const today = todayIn(new Date());
-    const closed = await lastClosedDay(tx, spaceId, configId, addDays(today, -LOOKBACK_DAYS));
-    return runRange(closed && closed < today ? addDays(closed, 1) : today, undefined);
-  };
+  return (spec: unknown) => given ?? runRange(currentDate(ReconSpec.parse(spec), new Date()), undefined);
 };
 
+/** The latest signed-off business date of config `configId` within `range` (null when none): a signed day is frozen. */
+async function signedIn(tx: InTx, spaceId: string, configId: string, range: { from: string; to: string }): Promise<string | null> {
+  const [r] = await tx.select({ d: sql<string | null>`max(${reconDays.businessDate})::text` }).from(reconDays).where(and(eq(reconDays.spaceId, spaceId),
+    eq(reconDays.configId, configId), isNotNull(reconDays.signedAt), sql`${reconDays.businessDate} between ${range.from}::date and ${range.to}::date`));
+  return r?.d ?? null;
+}
+
 /**
- * POST …/recons/:configId/runs: a run of the published version over `b`'s business dates (rangeOf), queued; its job
- * closes the dates past their close moment as a scheduled run does (runScheduled). 404 recon, 409 no published
- * version, a closed date in the range or a run under way, 400 range.
+ * POST …/recons/:configId/runs: a run of the published version over `b`'s business dates (rangeOf), queued; like every
+ * live run it makes what stays unpaired unmatch (DEC-064). 404 recon, 409 no published version, a signed-off date in
+ * the range or a run under way, 400 range.
  */
 export async function requestRun(ctx: Ctx, configId: string, b: RunRangeBody): Promise<ReconRunDto> {
   const rangeIn = rangeOf(b);
   return inSpace(ctx, async (tx, spaceId) => {
     const [c] = await tx.select().from(reconConfigs).where(and(eq(reconConfigs.spaceId, spaceId), eq(reconConfigs.id, configId)));
     if (!c) throw notFound("recon");
-    const [p] = await tx.select({ id: reconConfigVersions.id, version: reconConfigVersions.version }).from(reconConfigVersions)
+    const [p] = await tx.select({ id: reconConfigVersions.id, version: reconConfigVersions.version, spec: reconConfigVersions.spec }).from(reconConfigVersions)
       .where(and(eq(reconConfigVersions.spaceId, spaceId), eq(reconConfigVersions.configId, configId), eq(reconConfigVersions.status, "published")));
     if (!p) throw new ApiError("invalid_state", "This recon has no published version yet. Approve one first.");
-    const range = await rangeIn(tx, spaceId, configId);
-    const [shut] = await tx.select({ d: sql<string>`max(${reconDays.businessDate})::text` }).from(reconDays).where(and(eq(reconDays.spaceId, spaceId),
-      eq(reconDays.configId, configId), eq(reconDays.status, "closed"), sql`${reconDays.businessDate} between ${range.from}::date and ${range.to}::date`));
-    if (shut?.d) throw new ApiError("invalid_state", CLOSED_DAY);
+    const range = rangeIn(p.spec);
+    if (await signedIn(tx, spaceId, configId, range)) throw new ApiError("day_closed", SIGNED_DAY);
     await claimConfig(tx, spaceId, configId);
     const id = Bun.randomUUIDv7();
     await createRun(tx, { spaceId, configId, versionId: p.id, mode: "manual", ...range, status: "queued", id, jobId: id });
@@ -113,9 +110,9 @@ export async function requestRun(ctx: Ctx, configId: string, b: RunRangeBody): P
  * POST …/runs/:runId/rollback (a space admin; rollback.ts): run `runId` and every live run after it rolled back, then
  * their dates run again: a rerun of the published version over them (from the first's start to the last's end),
  * queued with rollback_of = `runId`; its job does the rollback first. 404 recon or run; 400 a simulation, or dates past
- * RANGE_MAX_DAYS; 409 no published version, the run rolled back already or not ended, a closed date in the range,
- * a run under way. A closed carry-over date, or a change waiting for a decision, refuses it when the job runs (the rerun
- * fails with why).
+ * RANGE_MAX_DAYS; 409 no published version, the run rolled back already or not ended, a signed-off date in the
+ * range, a run under way. A signed-off carry-over date, or a change waiting for a decision, refuses it when the job runs
+ * (the rerun fails with why).
  */
 export async function requestRollback(ctx: Ctx, configId: string, runId: string): Promise<RollbackRunDto> {
   return inSpace(ctx, async (tx, spaceId) => {
@@ -134,9 +131,8 @@ export async function requestRollback(ctx: Ctx, configId: string, runId: string)
     const range = { from: set!.from, to: set!.to };
     const days = Math.round((Date.parse(`${range.to}T00:00:00Z`) - Date.parse(`${range.from}T00:00:00Z`)) / 86_400_000) + 1;
     if (days > RANGE_MAX_DAYS) throw new ApiError("bad_request", `This run and the ones after it cover ${days} business dates; a rerun covers at most ${RANGE_MAX_DAYS}. Roll back a later run.`);
-    const [shut] = await tx.select({ d: sql<string>`min(${reconDays.businessDate})::text` }).from(reconDays).where(and(eq(reconDays.spaceId, spaceId),
-      eq(reconDays.configId, configId), eq(reconDays.status, "closed"), sql`${reconDays.businessDate} between ${range.from}::date and ${range.to}::date`));
-    if (shut?.d) throw new ApiError("day_closed", `Business date ${shut.d} is closed, so what these runs did there stays. Roll back a run after it.`);
+    const shut = await signedIn(tx, spaceId, configId, range);
+    if (shut) throw new ApiError("day_closed", `Business date ${shut} is signed off, so what these runs did there stays. Roll back a run after it.`);
     await claimConfig(tx, spaceId, configId);
     const id = Bun.randomUUIDv7();
     await createRun(tx, { spaceId, configId, versionId: p.id, mode: "rerun", ...range, status: "queued", id, jobId: id, rollbackOf: x.id });
@@ -158,7 +154,7 @@ export async function requestSimulation(ctx: Ctx, configId: string, versionId: s
   const rangeIn = rangeOf(b);
   return inSpace(ctx, async (tx, spaceId) => {
     const { config: c, version: v } = await draftToSimulate(tx, ctx, configId, versionId);
-    const range = await rangeIn(tx, spaceId, configId);
+    const range = rangeIn(v.spec);
     await claimConfig(tx, spaceId, configId);
     const id = Bun.randomUUIDv7();
     await createRun(tx, { spaceId, configId, versionId, mode: "simulation", ...range, status: "queued", id, jobId: id });
@@ -261,22 +257,14 @@ export async function runJob(on: Tx, data: { spaceId: string; runId: string }, s
 }
 
 /**
- * A run's job (runScheduled: the run, then its due dates closed) and, when that closed one of its dates, its days read
- * again so they show what the close made, also when runScheduled throws after closing some (a tick that closes nothing
- * reads nothing again). `runner` = runScheduled (a test passes its own).
+ * A run's job (runScheduled; `runner` = a test's own) and, also after a failure (what it committed counts), its dates
+ * queued for the dashboard's rollup; the nightly sweep is the net.
  */
 export async function runAndRefresh(on: Tx, d: { spaceId: string; runId: string }, signal?: AbortSignal, runner: typeof runScheduled = runScheduled): Promise<void> {
-  const before = d.runId ? await closedDates(on, d.spaceId, d.runId) : 0;
   try {
     await runner(on, d, signal);
   } finally {
     // a failure here is logged, never thrown: it must not replace the runner's own error (review T4)
-    try {
-      if (d.runId && (await closedDates(on, d.spaceId, d.runId)) > before) await refreshRunDays(on, d.spaceId, d.runId);
-    } catch (e) {
-      log.warn({ err: e, runId: d.runId }, "run days not refreshed after the close");
-    }
-    // the dashboard's rollup of its dates, also after a failure (what it committed counts); the nightly sweep is the net
     try {
       if (d.runId) await queueRunStats(on, d.spaceId, d.runId);
     } catch (e) {
@@ -287,7 +275,7 @@ export async function runAndRefresh(on: Tx, d: { spaceId: string; runId: string 
 
 /** The engine's job handlers, on the worker's pool (src/worker.ts). */
 export const engineHandlers = (on: Tx): Partial<Record<QueueName, JobHandler>> => {
-  // a run and its due dates closed, its days read again when that closed one (runAndRefresh); or a GET's backfill
+  // a run (runAndRefresh); or a GET's backfill
   const run = async ({ data, signal }: { data: unknown; signal?: AbortSignal }) => {
     const d = data as { spaceId: string; runId: string; finalize?: boolean };
     // a GET found a succeeded run's days missing (before 0032, failed, older shape): write them (runDetail)
@@ -295,7 +283,6 @@ export const engineHandlers = (on: Tx): Partial<Record<QueueName, JobHandler>> =
     await runAndRefresh(on, d, signal);
   };
   return {
-    // a manual run closes its due dates as a scheduled one does (Captain: day close doesn't depend on what started the run)
     [QUEUES.reconHeavy]: run,
     // the schedule's minute, and the runs it starts
     [QUEUES.reconSchedule]: async () => { await dispatch(on); },

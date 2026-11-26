@@ -3,10 +3,12 @@
 // business date D of the range under withSpace scoped to the config's space (a source shared to it is read through the
 // records policies, DEC-042) and configLock: intake of each side's records of D − carry_over_days … D (a transaction per
 // side, marker `intake_done`), fresh planner statistics between (sql/runs.ts analyzeSql, short transactions of their
-// own), then the passes in order over open items of that window only with the run's counters and `done_through` = D
-// (the step's marker). A failed transaction rolls back alone and marks the run failed. A step run again finds nothing
-// new: intake is once per record, passes read open items only, so a rerun adds no group and loses no item (Review
-// Focus 3); a job retried, or delivered twice, goes on after the markers with the counters the run row holds.
+// own), then the passes in order over that window's pool (open items and every unmatch no decision waits on, DEC-064)
+// with the run's counters, then what a live run leaves open becomes unmatch at once (sql/days.ts breakOpenSql: there is
+// no day close), and `done_through` = D (the step's marker). A failed transaction rolls back alone and marks the run
+// failed. A step run again finds nothing new: intake is once per record, a pass pairs what is unpaired only, so a
+// rerun adds no group and loses no item (Review Focus 3); a job retried, or delivered twice, goes on after the markers
+// with the counters the run row holds.
 //
 // A run is pinned to its version (Focus 5): execRun reads the version the run row names, whatever is published since;
 // only createRun asks for the published one. A draft's simulation pins its spec hash too: a draft edited before the
@@ -40,7 +42,7 @@ import { withSpace } from "../spaces";
 import { matchGroups, matchMembers, reconDays, reconIntakeMarks, reconItems, reconRuns, reconSimChanges } from "./schema";
 import { groupBreakSql, nearMissSql, type NearMissReason, tieBreakSql } from "./sql/breaks";
 import { closeReplacedSql, intakeSql, reverseReplacedSql } from "./sql/intake";
-import { graceSql } from "./sql/days";
+import { breakOpenSql } from "./sql/days";
 import { analyzeSql, analyzeTableSql, runHasRecordsSql } from "./sql/runs";
 import { rollBackRuns } from "./rollback";
 import { queueDay } from "./stats";
@@ -105,7 +107,7 @@ export const addDays = (d: string, n: number) => new Date(Date.parse(`${d}T00:00
 
 /**
  * The carry over a window uses (owner, 22 Nov: match / unmatch): the spec's days as they are, or with `null` (always)
- * the days from the recon's oldest unmatch still checked — open, or a "No counterpart" break with late_match — to
+ * the days from the recon's oldest unmatch still checked — open, or an unmatch no decision waits on (DEC-064) — to
  * `from`, at least 1 (so day close keeps late_match on) and at most 3660. The run then reads from that date: only items
  * still unmatched, never the whole history of records (intake is per record, once). A not_required item (one-way,
  * DEC-055) never widens it: side B of a one-way recon never settles by itself, so the window would grow without bound;
@@ -113,10 +115,11 @@ export const addDays = (d: string, n: number) => new Date(Date.parse(`${d}T00:00
  */
 export async function effectiveCarry(tx: InTx, k: { spaceId: string; configId: string; simRunId?: string | null }, carry: number | null, from: string): Promise<number> {
   if (carry !== null) return carry;
-  // the live unmatch (a simulation starts with none of its own: it reads the live recon's, blind review I2)
+  // the live unmatch (a simulation starts with none of its own: it reads the live recon's, blind review I2): open, and
+  // every unmatch no decision waits on (the pool, DEC-064)
   const [r] = await tx.select({ d: sql<string | null>`min(${reconItems.businessDate})::text` }).from(reconItems)
     .where(and(eq(reconItems.spaceId, k.spaceId), eq(reconItems.configId, k.configId), isNull(reconItems.simRunId),
-      or(eq(reconItems.status, "open"), and(eq(reconItems.status, "break"), eq(reconItems.lateMatch, true), eq(reconItems.breakReason, "No counterpart")))));
+      or(eq(reconItems.status, "open"), and(eq(reconItems.status, "break"), sql`${reconItems.breakState} is distinct from 'pending_approval'`))));
   const days = r?.d ? Math.round((Date.parse(`${from}T00:00:00Z`) - Date.parse(`${r.d}T00:00:00Z`)) / DAY) : 0;
   // at least 31 (as far back as day + N goes): late data dated before the oldest unmatch still comes in (blind review I1)
   return Math.min(3660, Math.max(CARRY_ALWAYS_MIN_DAYS, days));
@@ -182,7 +185,7 @@ async function runPass(tx: InTx, c: StepCtx, p: ReconSpec["passes"][number], out
   if (p.on_ambiguous === "break") broke(await one<{ items: number; refs: number; a: number } & Dated>(tx, tieBreakSql(c, p)));
   else for (let r = 0; r < ROUNDS_MAX && (await write(tieSuggestSql(c, p), "suggested")) > 0; r++);
   // a break of the carry-over window this pass would suggest a pair for stays a break, with the pair proposed (DEC-047)
-  if (c.late && (p.accept === "suggest" || p.on_ambiguous === "suggest")) touch(await one<Dated>(tx, proposeSql(c, p)));
+  if (p.accept === "suggest" || p.on_ambiguous === "suggest") touch(await one<Dated>(tx, proposeSql(c, p)));
 }
 
 /** `from`..`to` checked (dates, forwards, at most RANGE_MAX_DAYS); one left out takes the other, both = `today`. */
@@ -371,9 +374,15 @@ export async function execRun(on: Tx, spaceId: string, runId: string, o: { finis
         await tx.execute(sql`select set_config('statement_timeout', ${String(passTimeoutMs(r.mode))}, true)`);
         for (const p of spec.passes) await runPass(tx, c(tx), p, counters.passes[String(p.no)]!, touch);
         // a proposal whose proposed item a pass has paired since (this step's included) is cleared (DEC-047)
-        if (carry > 0) touch(await one<Dated>(tx, clearProposalsSql(c(tx))));
-        // grace (spec §9 step 4): live runs only; a simulation replays dates, its breaks come from the classifier
-        if (!simRunId) touch(await one<Dated>(tx, graceSql(c(tx), spec.grace_minutes, carry)));
+        touch(await one<Dated>(tx, clearProposalsSql(c(tx))));
+        // no day close (DEC-064): what a live run leaves open is unmatch now, paired again by the next runs within carry
+        // over; a simulation writes no unmatch, its projection says what would be (projectDayClose)
+        if (!simRunId) {
+          touch(await one<Dated>(tx, breakOpenSql(c(tx), carry)));
+          // the items just made unmatch get the pair a suggesting pass would give them too (DEC-047), as every later
+          // run would: a run again changes nothing
+          for (const p of spec.passes) if (p.cardinality === "1:1" && (p.accept === "suggest" || p.on_ambiguous === "suggest")) touch(await one<Dated>(tx, proposeSql(c(tx), p)));
+        }
         await tx.update(reconRuns).set({ counters, doneThrough: d }).where(mine);
       });
       if (passed === "over") return null;
@@ -581,8 +590,8 @@ export async function runRow(tx: InTx, spaceId: string, configId: string, runId:
 
 /**
  * A run's days (ReconRunDto.days) and its passes' distinct broken references, over its window `first`..`to` (its dates
- * and the carry over before them) as the items stand when it is called (the run's end, or after its close): matched groups and suggested ones whose items are still
- * suggested per (date, pass), whether the day closed, breaks of time (grace, close: break_pass null) and current records
+ * and the carry over before them) as the items stand when it is called (the run's end): matched groups and suggested ones whose items are still
+ * suggested per (date, pass), whether the day is signed off, unmatch a run left (break_pass null) and current records
  * (items not closed) per (date, side), broken items per (date,
  * pass) with distinct references (per day: a reference broken on two dates counts on each), open items per (date, side);
  * and per pass the distinct references of the window's items it broke (each once). Run once, at the run's
@@ -618,8 +627,9 @@ async function daysOf(tx: InTx, w: { spaceId: string; configId: string; simRunId
     breaks: sql<number>`count(*) filter (where ${reconItems.status} = 'break')`.mapWith(Number),
     nr: sql<number>`count(*) filter (where ${reconItems.status} = 'not_required')`.mapWith(Number),
   }).from(reconItems).where(itemsIn).groupBy(reconItems.businessDate, reconItems.side, reconItems.breakReason);
+  // `closed` = signed off (DEC-064: no day close; the field keeps its stored name)
   const closed = w.simRunId ? [] : await tx.select({ d: reconDays.businessDate }).from(reconDays).where(and(eq(reconDays.spaceId, w.spaceId), eq(reconDays.configId, w.configId),
-    eq(reconDays.status, "closed"), sql`${reconDays.businessDate} between ${w.first}::date and ${w.to}::date`));
+    isNotNull(reconDays.signedAt), sql`${reconDays.businessDate} between ${w.first}::date and ${w.to}::date`));
   const dates = new Set<string>();
   for (let d = w.from; d <= w.to; d = addDays(d, 1)) dates.add(d);
   for (const r of [...matched, ...suggested, ...broken, ...states.filter((x) => x.current > 0 || x.open > 0)]) dates.add(r.d);
@@ -652,8 +662,8 @@ async function daysOf(tx: InTx, w: { spaceId: string; configId: string; simRunId
 /**
  * Writes a succeeded run's days (daysOf over its window, as its items stand) and its passes' broken references counted
  * once, and marks it finalized, under its row's lock; idempotent. `backfill`: the job a GET queued, which leaves a run
- * already finalized as it is. Called by the worker after a run and again
- * after its close, and by the backfill job a GET queues (pre-0032 runs, failed or old-shape days).
+ * already finalized as it is. Called by the worker after a run, and by the backfill job a GET queues (pre-0032 runs,
+ * failed or old-shape days).
  */
 export async function finalizeRun(on: Tx, spaceId: string, runId: string, o: { backfill?: boolean } = {}): Promise<void> {
   const mine = and(eq(reconRuns.spaceId, spaceId), eq(reconRuns.id, runId));
@@ -683,33 +693,6 @@ export async function finalizeRun(on: Tx, spaceId: string, runId: string, o: { b
     }
     // a success clears the backfill's failed attempts, so a later outage starts its own count (review T1)
     await tx.update(reconRuns).set({ counters, days, finalized: true, finalizeAttempts: 0, finalizeError: null }).where(mine);
-  }, on);
-}
-
-/**
- * After a live run's job closed its dates (schedule.ts runScheduled): finalized again, so its days show the breaks
- * the close made (`counters` stay what the run did). On a failure the run is marked not finalized, so the next GET
- * queues the backfill instead of showing the picture from before the close for good.
- */
-export async function refreshRunDays(on: Tx, spaceId: string, runId: string): Promise<void> {
-  try {
-    await finalizeRun(on, spaceId, runId);
-  } catch (e) {
-    log.warn({ err: errorDetail(e), runId }, "recon run: days after the close failed");
-    await withSpace({ spaceIds: [spaceId], userId: null }, (tx) => tx.update(reconRuns).set({ finalized: false })
-      .where(and(eq(reconRuns.spaceId, spaceId), eq(reconRuns.id, runId))), on).catch((x: unknown) => log.warn({ err: errorDetail(x), runId }, "recon run: marking it for the backfill failed"));
-  }
-}
-
-/** How many of run `runId`'s own dates are closed (recon_days); 0 for a run not found. */
-export async function closedDates(on: Tx, spaceId: string, runId: string): Promise<number> {
-  return withSpace({ spaceIds: [spaceId], userId: null }, async (tx) => {
-    const [run] = await tx.select({ configId: reconRuns.configId, from: reconRuns.dateFrom, to: reconRuns.dateTo }).from(reconRuns)
-      .where(and(eq(reconRuns.spaceId, spaceId), eq(reconRuns.id, runId)));
-    if (!run) return 0;
-    const [r] = await tx.select({ n: count() }).from(reconDays).where(and(eq(reconDays.spaceId, spaceId), eq(reconDays.configId, run.configId),
-      eq(reconDays.status, "closed"), sql`${reconDays.businessDate} between ${run.from}::date and ${run.to}::date`));
-    return r?.n ?? 0;
   }, on);
 }
 

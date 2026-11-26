@@ -25,7 +25,7 @@ const COPY: Partial<Record<ErrorCode, string>> = {
   self_approval: "You made this version, so someone else has to approve or reject it.",
   password_change_required: "Set your own password first. Your administrator set the current one.",
   invalid_state: "This record changed since you opened it. Reload the page and try again.",
-  day_closed: "This business day is closed. Pulling it again needs a rerun request.",
+  day_closed: "This business day is signed off: its items no longer change.",
 };
 
 /**

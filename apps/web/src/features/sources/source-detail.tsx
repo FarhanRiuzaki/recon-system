@@ -225,7 +225,7 @@ export function SourceDetail({ spaceId, id, tab }: { spaceId: string; id: string
                 { label: "Last read", value: h.lastReadAt ? at(h.lastReadAt) : "Not yet" },
                 { label: "Last error", value: h.lastError ? errorSentence(h.lastError) : "None" },
                 { label: "Behind by", value: lagText(s) ?? "Up to date" },
-                { label: "Grace", value: h.graceMinutes ? `${h.graceMinutes} min: degraded past half, down past it` : "Not set: the lag isn't judged. A recon that reads this source, or the source's own health settings, sets one." },
+                { label: "Grace", value: h.graceMinutes ? `${h.graceMinutes} min: degraded past half, down past it` : "Not set: the lag isn't judged. The source's own health settings set one." },
               ]} />
             </Panel>
             {own && <PullHistory spaceId={spaceId} id={id} onQueued={watch} rollback={mayDo(roles, "connectSource") ? { blocked: s.status === "paused" ? PAUSED_REASON : null } : null} />}

@@ -128,10 +128,10 @@ describe("checks before a save", () => {
     const s = base();
     const windowed = { ...s, carry_over_days: 0, passes: s.passes.map((p, i) => (i === 2 ? { ...p, predicates: [...p.predicates, predicateOf("date_window", "business_date")] } : p)) };
     const gates = carryOverGates(windowed);
-    expect(gates).toEqual(["Pass 3 allows dates 1 day apart, but carry over is 0 days: pairs across days never meet in a daily run. Set carry over to 1 day."]);
+    expect(gates).toEqual(["Pass 3 allows dates 1 day apart, but carry over is 0 days: pairs across days never meet in a run. Set carry over to 1 day."]);
     expect(carryOverFix(gates[0]!)).toBe(1);
     expect(carryOverGates({ ...windowed, carry_over_days: 1 })).toEqual([]);
-    expect(carryOverGates({ ...windowed, schedule: { kind: "interval", every_minutes: 15 } })).toEqual([]);
+    expect(carryOverGates({ ...windowed, carry_over_days: null })).toEqual([]);
   });
 
   it("passes comparing amounts without a currency condition, when a side holds more than one currency", () => {
@@ -153,7 +153,7 @@ describe("checks before a save", () => {
     expect(placeOf("Carry over: Too long.")).toEqual({ setting: "Carry over", text: "Too long." });
     expect(placeOf("Pass 3 compares amounts but has no currency condition.").pass).toBe(3);
     expect(placeOf("Number the passes 1, 2, 3 … in order, with no gaps.")).toEqual({ text: "Number the passes 1, 2, 3 … in order, with no gaps." });
-    expect(carryOverFix("Pass 3 allows dates 1 day apart, but carry over is 0 days: pairs across days never meet in a daily run. Set carry over to 1 day.")).toBe(1);
+    expect(carryOverFix("Pass 3 allows dates 1 day apart, but carry over is 0 days: pairs across days never meet in a run. Set carry over to 1 day.")).toBe(1);
     expect(carryOverFix("USD has no tolerance in pass 2; USD pairs must match exactly.")).toBeNull();
   });
   it("Submit says why it is off, in order", () => {
@@ -292,7 +292,7 @@ import { addTemplatePass, passNeeds, templateReason } from "./spec-model";
 describe("ready passes and what a pass still needs (owner, 22 Nov)", () => {
   const side = new Map([["ext_ref", { from: "ref", kind: "text" as const }], ["amount_minor", { from: "amount", kind: "decimal" as const }], ["business_date", { from: "d", kind: "date" as const }], ["currency", { from: "ccy", kind: "text" as const }]]);
   const fields = [side, side] as unknown as Parameters<typeof addTemplatePass>[1];
-  const base = { sides: [], passes: [], grace_minutes: 30, carry_over_days: 1, close_at: "23:00", schedule: { kind: "daily", at: "06:00", business_date_offset: 1 } } as unknown as Parameters<typeof addTemplatePass>[0];
+  const base = { sides: [], passes: [], carry_over_days: 1, schedule: { business_date_offset: 1, from: "07:00", to: "16:00", every_minutes: 60 } } as unknown as Parameters<typeof addTemplatePass>[0];
   it("each template adds its pass, numbered, with the currency condition both sides allow", () => {
     const s = addTemplatePass(addTemplatePass(base, fields, "exact"), fields, "day");
     expect(s.passes.map((p) => [p.no, p.name, p.accept])).toEqual([[1, "Exact match", "auto"], [2, "Settled on another day", "suggest"]]);
@@ -388,12 +388,13 @@ describe("Compare amounts by (the spec's measure)", () => {
 });
 
 describe("the settings as the review and the overview both write them", () => {
-  it("schedule, grace, carry over, day close and measure, one text each", () => {
-    const spec = { ...base(), grace_minutes: 60, carry_over_days: 0 };
+  it("schedule (a run window, DEC-064), carry over and measure, one text each", () => {
+    const spec = { ...base(), carry_over_days: 0 };
     expect(settingsFacts(spec, fields).map((f) => [f.label, f.text])).toEqual([
-      ["Schedule", "Daily at 06:00 WIB, for the business date before"], ["Grace", "1 hour"], ["Carry over", "Only on its own day"],
-      ["Day closes", "23:00 WIB"], ["Compare amounts by", "Amount, per currency"],
+      ["Schedule", "Every 1 hour from 07:00 to 16:00 WIB, for the business date before"], ["Carry over", "Only on its own day"],
+      ["Compare amounts by", "Amount, per currency"],
     ]);
+    expect(settingsFacts({ ...spec, schedule: { business_date_offset: 0, from: "06:00", to: "06:00", every_minutes: 15 } }, fields)[0]!.text).toBe("Once at 06:00 WIB, for the same business date");
   });
 });
 
@@ -401,12 +402,12 @@ describe("what a version changes against the live one (the checker sees every se
   it("marks sides, direction, passes and each setting that differ, with the live text", () => {
     const live = base();
     const next: ReconSpec = { ...live, sides: [{ ...live.sides[0], label: "Core" }, live.sides[1]], direction: "a_to_b",
-      passes: [live.passes[0]!, { ...live.passes[1]!, name: "Renamed" }, live.passes[2]!], grace_minutes: 0, measure: { field: "attrs.channel" } };
+      passes: [live.passes[0]!, { ...live.passes[1]!, name: "Renamed" }, live.passes[2]!], carry_over_days: 3, measure: { field: "attrs.channel" } };
     const c = specChanges(live, next, fields)!;
     expect(c.sides).toEqual([true, false]);
     expect(c.direction).toBe(true);
     expect([...c.passes]).toEqual([2]);
-    expect(c.settings).toEqual({ grace: "30 min", measure: "Amount, per currency" });
+    expect(c.settings).toEqual({ carry: "Up to day + 1", measure: "Amount, per currency" });
     expect(specChanges(live, live, fields)).toEqual({ sides: [false, false], direction: false, passes: new Set(), passesChanged: false, settings: {} });
     expect(specChanges(undefined, next, fields)).toBeNull();
   });

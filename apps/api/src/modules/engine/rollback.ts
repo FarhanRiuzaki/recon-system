@@ -6,7 +6,7 @@
 // with each member back where it stood (open, or the late-data break a pass paired), and the items they broke (or made
 // not required, one-way) that are still so, back to open. Kept: the items they took in (the next run reads them as
 // open items), a person's matches, write-offs and postings (no run made them), and a group a person or a later run
-// reversed already. Refused, nothing changed, the rerun failed with why: a closed business date the rollback would
+// reversed already. Refused, nothing changed, the rerun failed with why: a signed-off business date the rollback would
 // change, a change of one of its items waiting for a decision, a run of the set not ended, the run rolled back already.
 import { and, asc, eq, gte, inArray, isNull, lte, ne, sql } from "drizzle-orm";
 import type { InTx } from "../../kernel/db";
@@ -43,7 +43,7 @@ export async function rollBackRuns(tx: InTx, rerun: { spaceId: string; configId:
   }
   const k = { spaceId, configId, runIds: set.map((r) => r.id) };
   const b = await one<{ closed: string | null; held: boolean }>(tx, rollbackBlockersSql(k));
-  if (b.closed) throw new ApiError("day_closed", `Business date ${b.closed} is closed, so what these runs did there stays. Nothing was changed.`);
+  if (b.closed) throw new ApiError("day_closed", `Business date ${b.closed} is signed off, so what these runs did there stays. Nothing was changed.`);
   if (b.held) throw new ApiError("invalid_state", "A change of an item these runs matched or broke waits for a decision. Decide or cancel it, then roll back again. Nothing was changed.");
   const groups = await one<Dated>(tx, reverseRunGroupsSql(k, rerun.id));
   const breaks = await one<Dated>(tx, reopenRunBreaksSql(k));

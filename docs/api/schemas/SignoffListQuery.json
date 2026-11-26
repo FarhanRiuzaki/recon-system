@@ -29,7 +29,7 @@
     "stage": {
       "type": "string",
       "enum": [
-        "closed",
+        "open",
         "prepared",
         "signed"
       ]

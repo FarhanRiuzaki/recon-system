@@ -19,7 +19,7 @@ import { sources, sourceVersions } from "../../../sources";
 import { spaces, withSpace } from "../../../spaces";
 import type { Ctx } from "../../../auth";
 import { reconRuns } from "../../schema";
-import { classifyUnmatched, refreshRunDays, runDetail, runItemPage, runRecon } from "../../service";
+import { classifyUnmatched, finalizeRun, runDetail, runItemPage, runRecon } from "../../service";
 import { budget } from "../../../../../test/helpers/perf";
 
 const A = Bun.randomUUIDv7();
@@ -62,7 +62,7 @@ async function config(a: string, b: string) {
         { no: 1, name: "Exact", cardinality: "1:1", blocking: [], accept: "auto", on_ambiguous: "break", predicates: [{ op: "eq", field: "ext_ref" }, { op: "eq", field: "amount_minor" }, ccyEq] },
         { no: 2, name: "Tolerance", cardinality: "1:1", blocking: ["ext_ref"], accept: "suggest", on_ambiguous: "suggest", predicates: [{ op: "amount_abs_tol", field: "amount_minor", tolerance: { IDR: "10.00" } }, ccyEq] },
       ],
-      grace_minutes: 30, carry_over_days: 0, close_at: "23:00", schedule: { kind: "daily", at: "23:30", business_date_offset: 0 },
+      carry_over_days: 0, schedule: { business_date_offset: 0, from: "00:00", to: "23:59", every_minutes: 60 },
     },
   });
   return { configId, versionId };
@@ -103,9 +103,9 @@ describe.if(!!process.env.PERF_ENGINE)("run latency", () => {
         await read();
         console.log(`  ${name}: ${Math.round(performance.now() - t1)} ms`);
       }
-      // a run's days again (daysOf, as after a close), in the worker; and the groups' GROUP BY's plan
+      // a run's days again (daysOf), in the worker; and the groups' GROUP BY's plan
       const t2 = performance.now();
-      await refreshRunDays(probe, A, run.runId);
+      await finalizeRun(probe, A, run.runId);
       console.log(`  daysOf (${n} groups-ish on one date): ${Math.round(performance.now() - t2)} ms`);
       const plan = (await db.execute(sql`explain (analyze, buffers) select business_date, pass_no, count(*) from match_groups
         where space_id = ${A} and config_id = ${configId} and sim_run_id is null and reversed_by is null and kind = 'auto'

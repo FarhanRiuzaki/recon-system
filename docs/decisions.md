@@ -871,3 +871,37 @@ di KSEI selalu menemukan item A ber-ref sama dan tetap "No counterpart" (835 ite
 - Kembali ke two-way tetap lewat `reopenNotRequired` (DEC-055): di hari closed semua jadi "No counterpart", termasuk
   bekas near miss (sweep tidak kembali ke hari closed).
 - Tes: `engine/tests/integration/one-way.test.ts`, `engine/tests/unit/pass.test.ts`.
+
+## DEC-063 — Rollback run recon dari Run history
+
+26 November 2026 — pemilik: "tambahkan rollback untuk history run rekon". Space admin (Superadmin juga) memilih
+"Roll back from here" pada sebuah run live: run itu dan setiap run live sesudahnya dibatalkan, lalu satu run `rerun`
+versi published atas tanggal-tanggal mereka diantrekan (`rollback_of`). Job rerun membatalkan dulu dalam satu
+transaksi di bawah configLock: group mereka yang belum dibalik dibalik (`reverse_reason` `rolled_back`, tidak pernah
+dihapus), anggota kembali ke tempatnya (open, atau break late data), item yang mereka break (`recon_items.break_run_id`)
+kembali open; item intake tetap. Ditolak tanpa perubahan: tanggal yang terkunci (DEC-064: signed off), perubahan yang
+menunggu keputusan, run belum selesai. Kode: `apps/api/src/modules/engine/rollback.ts`, `sql/rollback.ts`; tes
+`engine/tests/integration/rollback.test.ts`.
+
+## DEC-064 — Recon tanpa tutup hari: unmatch tiap run, jadwal per jendela, sign-off manual
+
+26 November 2026 — pemilik (kasus REKON GARUDA: data H+1, BILLER bisa telat sampai H+2, run berkali-kali sambil
+menunggu data): "tanpa close, tapi setelah recon dan data tidak ada tidak waiting langsung saja unmatch. yang unmatch
+ini bisa di recon lagi selama carry over". Berlaku untuk semua recon. Mengganti tutup hari DEC-043/DEC-046 dan batas
+pool DEC-047.
+
+- **Jadwal** satu bentuk: tanggal D di-run pada D + `business_date_offset`, dari jam `from` sampai `to`, tiap
+  `every_minutes` (Asia/Jakarta). Pilihan daily/interval, `close_at` dan `grace_minutes` dihapus dari spec; versi
+  tersimpan dikonversi oleh migration (daily jam X → jendela X–X; interval N menit → offset 0, 00:00–23:59, tiap N).
+  Tanggal yang terlewat ikut terbaca lewat jendela carry over run berikutnya.
+- **Tiap run**: setelah pass, item live yang masih open di jendela run langsung jadi unmatch dengan alasan
+  classifier near miss (sisi B recon one-way: not required). Suggestion tidak berubah (menunggu orang). Simulasi tidak
+  menulis unmatch; proyeksinya tetap "yang akan jadi unmatch".
+- **Pool pass**: open, not required, dan unmatch dengan alasan apa pun, kecuali yang menunggu approval atau
+  tanggalnya signed off. Unmatch yang dipasangkan pass otomatis selesai `AUTO_MATCHED_LATE_DATA`.
+- **Sign-off manual**: tanggal yang punya item live bisa di-prepare lalu di-sign off (maker-checker tetap), kapan
+  saja. `recon_days` kini hanya catatan sign-off. Saat sign off, posting group day-close sampai tanggal itu dikirim
+  (group cutoff tetap pada jam cutoff-nya).
+- **Kunci** pindah dari "closed" ke "signed off": run manual, rollback run, pull ulang snapshot dan rollback pull
+  ditolak hanya untuk tanggal yang signed off; item tanggal signed off keluar dari pool.
+- Health source tidak lagi memakai grace recon; deadline per tanggal dari recon = jam `from` jendela (offset ≥ 1).

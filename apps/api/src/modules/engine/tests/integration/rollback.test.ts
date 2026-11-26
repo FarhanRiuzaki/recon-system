@@ -1,7 +1,7 @@
 // A rollback of a recon's runs (rollback.ts, jobs.ts requestRollback): a space admin only, check order and the refusals
 // of the request; the rerun's job undoing what the run and every live run after it matched and broke (groups reversed
-// rolled_back, members and breaks back to open), then matching the dates again; and the refusals at the job (a closed
-// carry-over date, a change waiting for a decision), which fail the rerun and change nothing.
+// rolled_back, members and breaks back to open), then matching the dates again; and the refusals at the job (a
+// signed-off carry-over date, a change waiting for a decision), which fail the rerun and change nothing.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import type { ReconRunDto, RollbackRunDto } from "@starterkit/shared/contracts/recon";
 import type { SpaceRole } from "@starterkit/shared/spaces";
@@ -94,10 +94,10 @@ describe("rolling back a run", () => {
     const far = await runRecon(probe, { ...live(r), from: "2026-12-14" });
     const long = await rollback(t.sa, r.configId, runId);
     expect([long.status, await message(long)]).toEqual([400, "This run and the ones after it cover 43 business dates; a rerun covers at most 31. Roll back a later run."]);
-    // a closed date in their range
-    await db.insert(reconDays).values({ spaceId: A, configId: r.configId, businessDate: "2026-12-14", status: "closed", closedAt: new Date() });
+    // a signed-off date in their range (DEC-064: no day close, a signed day is frozen)
+    await db.insert(reconDays).values({ spaceId: A, configId: r.configId, businessDate: "2026-12-14", status: "signed", preparedAt: new Date(), signedAt: new Date() });
     const shut = await rollback(t.sa, r.configId, far.runId);
-    expect([shut.status, await message(shut)]).toEqual([409, "Business date 2026-12-14 is closed, so what these runs did there stays. Roll back a run after it."]);
+    expect([shut.status, await message(shut)]).toEqual([409, "Business date 2026-12-14 is signed off, so what these runs did there stays. Roll back a run after it."]);
     // a run not ended
     await db.update(reconRuns).set({ status: "running" }).where(eq(reconRuns.id, far.runId));
     const busy = await rollback(t.sa, r.configId, far.runId);
@@ -151,7 +151,7 @@ describe("rolling back a run", () => {
     expect([twice.status, await message(twice)]).toEqual([409, "This run was rolled back already."]);
   }, 60_000);
 
-  it("a closed carry-over date or a change waiting for a decision fails the rerun and changes nothing", async () => {
+  it("a signed-off carry-over date or a change waiting for a decision fails the rerun and changes nothing", async () => {
     const [sa, sb] = await sides();
     // R1 of D on side A pairs with R1 of D1 on side B (carry over 1): the group dated D1 holds an item of D
     const [a1] = await put(sa, [{ ref: "R1", amount: 100n }, { ref: "R3", amount: 300n }, { ref: "R3", amount: 300n }]);
@@ -168,11 +168,11 @@ describe("rolling back a run", () => {
       await drain();
       return getRun(r.configId, id);
     };
-    // the run's range is D–D1, but the rollback would change a break on D: once D is closed, the rerun refuses
-    await db.insert(reconDays).values({ spaceId: A, configId: r.configId, businessDate: D, status: "closed", closedAt: new Date() });
+    // the run's range is D–D1, but the rollback would change a break on D: once D is signed off, the rerun refuses
+    await db.insert(reconDays).values({ spaceId: A, configId: r.configId, businessDate: D, status: "signed", preparedAt: new Date(), signedAt: new Date() });
     await db.update(reconRuns).set({ dateFrom: D1 }).where(eq(reconRuns.id, x.runId));
     const closed = await rolled();
-    expect([closed.status, closed.error]).toEqual(["failed", `Business date ${D} is closed, so what these runs did there stays. Nothing was changed.`]);
+    expect([closed.status, closed.error]).toEqual(["failed", `Business date ${D} is signed off, so what these runs did there stays. Nothing was changed.`]);
     expect([await groupsOf(r.configId), await itemsOf(r.configId), (await getRun(r.configId, x.runId)).rolledBackAt]).toEqual([groups, items, null]);
     await db.delete(reconDays).where(eq(reconDays.configId, r.configId));
 

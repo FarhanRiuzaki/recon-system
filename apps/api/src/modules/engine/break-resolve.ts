@@ -28,7 +28,6 @@ import { approvalRequests, MISSING_WORKFLOW, pinnedVersion, requestView } from "
 import { connectors, runsOf } from "../integrations";
 import { matchGroups, matchMembers, reconDays, reconItems } from "./schema";
 import { addDays } from "./service";
-import { NEAR_MISS } from "./sql/breaks";
 import { assertNotSigned } from "./signoff";
 import { queueStats } from "./stats";
 
@@ -139,14 +138,13 @@ async function routesOf(tx: InTx, spaceId: string, spec: ReconSpec | null): Prom
 }
 
 /**
- * Whether runs look for the item's counterpart again: the engine's pool (sql/pass.ts poolStatus) holds an open item,
- * and with carry over above 0 (or always) a "No counterpart" break with late_match that waits for no decision on a
- * day not signed off. Carry over is calendar days from the business date (engine addDays).
+ * Whether runs look for the item's counterpart again: the engine's pool (sql/pass.ts poolStatus, DEC-064) holds an
+ * open item and every unmatch that waits for no decision on a day not signed off, until its business date + carry
+ * over (calendar days, engine addDays; 0 = its own date's runs), or always.
  */
 export async function recheckOf(tx: InTx, spaceId: string, x: typeof reconItems.$inferSelect, live: ReconSpec | null): Promise<BreakDetailDto["recon"]["recheck"]> {
   const carry = live ? live.carry_over_days : 0;
-  const pooled = x.status === "open" || (x.status === "break" && x.lateMatch && x.breakReason === NEAR_MISS.none && x.breakState !== "pending_approval"
-    && carry !== 0 && !(await signed(tx, spaceId, x.configId, x.businessDate)));
+  const pooled = x.status === "open" || (x.status === "break" && x.breakState !== "pending_approval" && !(await signed(tx, spaceId, x.configId, x.businessDate)));
   if (!live || !pooled) return { kind: "no" };
   return carry === null ? { kind: "always" } : { kind: "until", date: addDays(x.businessDate, carry) };
 }

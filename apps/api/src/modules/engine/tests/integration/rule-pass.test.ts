@@ -14,7 +14,6 @@ import { ensureMonthPartitions } from "../../../../kernel/partitions";
 import { records, sourceCursors } from "../../../ingest";
 import { calendars } from "../../../sources";
 import { spaces } from "../../../spaces";
-import { closeDay } from "../../breaks";
 import { matchGroups, matchMembers, reconItems, reconRuns } from "../../schema";
 import { runRecon } from "../../service";
 import { ccyEq, D, makeSource, plainSource, put, recon, spec, type Src } from "../fixtures";
@@ -55,7 +54,7 @@ afterAll(async () => {
 });
 
 describe("a rule pass (1:0)", () => {
-  it("matches side A's zero amounts alone, after the pair pass took the one that has a counterpart; the rest goes to day close", async () => {
+  it("matches side A's zero amounts alone, after the pair pass took the one that has a counterpart; the rest is unmatch at the run's end", async () => {
     const [sa, sb] = await sides();
     const r = await recon(A, spec(sa.sourceId, sb.sourceId, [exact, rule(2, "a", zero)]));
     await put(sa, [{ ref: "A1", amount: 100n }, { ref: "Z1", amount: 0n }, { ref: "Z2", amount: 0n }, { ref: "A2", amount: 100n }]);
@@ -64,8 +63,8 @@ describe("a rule pass (1:0)", () => {
 
     expect(await itemsOf(r.configId)).toEqual([
       { side: "a", status: "matched", reason: null, ref: "A1" }, { side: "b", status: "matched", reason: null, ref: "A1" },
-      { side: "a", status: "open", reason: null, ref: "A2" },
-      { side: "b", status: "open", reason: null, ref: "B0" }, // a zero on side B: the rule reads side A only
+      { side: "a", status: "break", reason: "No counterpart", ref: "A2" },
+      { side: "b", status: "break", reason: "No counterpart", ref: "B0" }, // a zero on side B: the rule reads side A only
       { side: "a", status: "matched", reason: null, ref: "Z1" },
       { side: "a", status: "matched", reason: null, ref: "Z2" }, { side: "b", status: "matched", reason: null, ref: "Z2" },
     ]);
@@ -82,8 +81,7 @@ describe("a rule pass (1:0)", () => {
     expect((run!.counters as ReconRunDto["counters"]).passes["2"]).toMatchObject({ matched: 1, matchedItems: { a: 1, b: 0 }, broken: 0 });
     expect((run!.counters as ReconRunDto["counters"]).passes["1"]).toMatchObject({ matched: 2, matchedItems: { a: 2, b: 2 } });
 
-    // day close breaks what is left; the rule's match stays
-    expect(await closeDay(probe, r, D, after)).toBe("closed");
+    // what is left is unmatch since the run's end (DEC-064); the rule's match stays
     expect((await itemsOf(r.configId)).map((x) => `${x.ref} ${x.side} ${x.status} ${x.reason ?? ""}`.trim())).toEqual([
       "A1 a matched", "A1 b matched", "A2 a break No counterpart", "B0 b break No counterpart", "Z1 a matched", "Z2 a matched", "Z2 b matched",
     ]);
@@ -95,13 +93,13 @@ describe("a rule pass (1:0)", () => {
     expect(rows.items.filter((x) => x.b.count === 0).map((x) => [x.status, x.a.state, x.a.count, x.b.state])).toEqual([["matched", "in_group", 1, "none"]]);
   });
 
-  it("a rule on side B with several conditions (in, not_null); an item failing one stays open; a run again adds nothing", async () => {
+  it("a rule on side B with several conditions (in, not_null); an item failing one is unmatch; a run again adds nothing", async () => {
     const [sa, sb] = await sides();
     const fee = [{ field: "attrs.settlement_ref", op: "in", values: ["FEE", "ADJ"] }, { field: "account_ref", op: "not_null" }];
     const r = await recon(A, spec(sa.sourceId, sb.sourceId, [exact, rule(2, "b", fee)]));
     await put(sb, [{ ref: "F1", amount: 5n, sref: "FEE", acct: "001" }, { ref: "F2", amount: 5n, sref: "ADJ" }, { ref: "F3", amount: 5n, sref: "OTHER", acct: "001" }]);
     await runRecon(probe, { ...r, mode: "daily", from: D });
-    expect((await itemsOf(r.configId)).map((x) => `${x.ref} ${x.status}`)).toEqual(["F1 matched", "F2 open", "F3 open"]);
+    expect((await itemsOf(r.configId)).map((x) => `${x.ref} ${x.status}`)).toEqual(["F1 matched", "F2 break", "F3 break"]);
     await runRecon(probe, { ...r, mode: "daily", from: D });
     expect(await db.select({ id: matchGroups.id }).from(matchGroups).where(eq(matchGroups.configId, r.configId))).toHaveLength(1);
   });

@@ -61,8 +61,8 @@ const FILE_BATCH = 1000;
 
 /**
  * Seams of later plans and tests. onRecordChanged: records of a mutable source just replaced (the engine reverses
- * their matches at its next intake, REC-FUT-15; a no-op here). dayClosed: whether a source's business date is closed:
- * any config reading it, in any space, closed it (REC-FUT-16, recon_source_day_closed), so it is never pulled again
+ * their matches at its next intake, REC-FUT-15; a no-op here). dayClosed: whether a source's business date is frozen:
+ * any config reading it, in any space, signed it off (REC-FUT-16, DEC-064, recon_source_day_closed), so it is never pulled again
  * outside a rerun (Plan 5). connect: the connector of a stored connection, with the
  * worker's statement timeout.
  */
@@ -372,7 +372,7 @@ const fromPull = (s: Scope, p: { id: string; startedAt: Date }) => and(eq(source
  * quarantined lines; on a `mutable` source the records they replaced count again), are marked rolled back, and the
  * cursor goes back to where that pull started, so the pull that follows reads those rows again under the published
  * version. One transaction under the source's lock, the day counters kept with it. Answers why it was refused (nothing
- * removed, the request dropped): a business date it touches is closed (a rerun, Plan 5), or where the pull started isn't
+ * removed, the request dropped): a business date it touches is signed off (a rerun, Plan 5), or where the pull started isn't
  * known. The completion times of dates (source_deliveries) stay: a date delivered on time was, whatever came after.
  * ponytail: the source's records are found by origin_id without an index of their own (rollbacks are rare, and run
  * on the worker's statement timeout); an index on (space_id, source_id, origin_id) when a source of millions needs it.
@@ -398,9 +398,9 @@ async function rollBackPulls(s: Scope, on: Tx, mutable: boolean): Promise<string
     const wrote = tx.select({ id: sourcePulls.id }).from(sourcePulls).where(and(fromPull(s, p), gt(sourcePulls.rows, 0)));
     const theirs = and(eq(records.spaceId, s.spaceId), eq(records.sourceId, s.sourceId), inArray(records.originId, wrote));
     const lines = and(eq(quarantineRows.spaceId, s.spaceId), eq(quarantineRows.sourceId, s.sourceId), eq(quarantineRows.origin, "pull"), inArray(quarantineRows.originId, wrote));
-    // a closed day is never changed outside a rerun; a pulled line has no business date of its own
+    // a signed-off day is never changed outside a rerun; a pulled line has no business date of its own
     const dates = (await tx.selectDistinct({ d: records.businessDate }).from(records).where(theirs)).map((r) => r.d).sort();
-    for (const d of dates) if (await ingestHooks.dayClosed(tx, s, d)) return refuse(`business date ${d} is closed. Pulling it again needs a rerun request (later release). Nothing was removed.`);
+    for (const d of dates) if (await ingestHooks.dayClosed(tx, s, d)) return refuse(`business date ${d} is signed off in a recon. Pulling it again needs a rerun request (later release). Nothing was removed.`);
     const counted = byDate([]);
     if (mutable) {
       // records an earlier pull wrote that one of these replaced count again: their replacement goes
@@ -431,7 +431,7 @@ async function rollBackPulls(s: Scope, on: Tx, mutable: boolean): Promise<string
 /**
  * Snapshot of `businessDate` for a db_snapshot source (spec §8): loaded under a `loading` snapshot, made active only
  * when the whole query was read, superseding the active one in the same transaction. A failure marks it failed and
- * leaves the active one as it was. A closed day is not pulled again ("day_closed": Plan 5's rerun with approval).
+ * leaves the active one as it was. A signed-off day is not pulled again ("day_closed": Plan 5's rerun with approval).
  */
 export async function snapshotSource(s: Scope, businessDate: string, on: Tx): Promise<"active" | "failed" | "paused" | "skipped" | "day_closed"> {
   const l = await inScope(s, on, (tx) => load(tx, s));
@@ -1008,7 +1008,7 @@ export function runSourceNow(ctx: Ctx, id: string, b: RunSourceBody): Promise<Ru
       if (!b.businessDate) throw new ApiError("bad_request", "Name the business date to pull again.");
       if (b.businessDate > todayIn(new Date())) throw new ApiError("bad_request", `Business date ${b.businessDate} hasn't started yet. Pull a date up to today.`);
       if (await ingestHooks.dayClosed(tx, scope, b.businessDate)) {
-        throw new ApiError("day_closed", `Day ${b.businessDate} is closed. Pulling it again needs a rerun request (later release).`);
+        throw new ApiError("day_closed", `Day ${b.businessDate} is signed off in a recon. Pulling it again needs a rerun request (later release).`);
       }
       job = await enqueue(QUEUES.ingestSnapshot, { ...scope, businessDate: b.businessDate }, { key: `${s.id}:${b.businessDate}` });
     } else {

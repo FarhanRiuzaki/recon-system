@@ -130,9 +130,9 @@ describe("a rule (1:0)", () => {
 describe("statements", () => {
   const p2 = pass({ blocking: ["ext_ref"], predicates: [{ op: "amount_abs_tol", field: "amount_minor", tolerance: { IDR: "1000.00" } }, { op: "eq", field: "currency" }] });
 
-  it("pools: every open item of the window, live or one simulation's; lk = locked by this statement, skipping those held elsewhere", () => {
+  it("pools: every open item and unmatch of the window, live or one simulation's; lk = locked by this statement, skipping those held elsewhere", () => {
     const s = text(acceptSql(ctx, p2));
-    expect(s).toContain("i.status = 'open' and i.sim_run_id is null and i.business_date between $");
+    expect(s).toContain("signed_at is not null)))) and i.sim_run_id is null and i.business_date between $");
     expect(s).toContain("with l0 as materialized (select i.id, i.version as v, i.status as st, i.business_date as bd, i.record_id as rec from \"recon_items\" i where i.space_id = $1");
     expect(s).toContain("for update skip locked), l1 as materialized");
     // the locked items as locked, then the held ones (anti join), each joined to its record
@@ -142,13 +142,13 @@ describe("statements", () => {
     expect(s).not.toContain("for update of i");
     expect(s).toContain("from pa a join pb b on a.x0 = b.x0 and a.x2 = b.x2 where abs(b.x1 - a.x1) <=");
     expect(text(acceptSql({ ...ctx, simRunId: "sim" }, p2))).toContain("and i.sim_run_id = $");
-    // carry over > 0: the breaks a late counterpart may close join the pool (Task 6)
-    const late = acceptSql({ ...ctx, late: true }, p2);
-    expect(text(late)).toContain("and (i.status = 'open' or (((i.status = 'break' and i.late_match and i.break_reason = $");
-    // and a one-way recon's not-required side-B items (DEC-055), under the same signed-off rule
-    expect(text(late)).toContain("is distinct from 'pending_approval') or (i.status = 'not_required' and not exists (select 1 from match_members sm");
-    // only "No counterpart" breaks rejoin across days (DEC-047, Captain): the bound reason is the classifier's
-    expect(dialect.sqlToQuery(late).params).toContain(NEAR_MISS.none);
+    // every unmatch no decision waits on joins the pool, whatever its reason and carry over (DEC-064), as do a one-way
+    // recon's not-required side-B items (DEC-055); a signed-off date's items stay out
+    expect(s).toContain("and (i.status = 'open' or (((i.status = 'break' and i.break_state is distinct from 'pending_approval')");
+    expect(s).toContain("or (i.status = 'not_required' and not exists (select 1 from match_members sm");
+    expect(s).toContain("not exists (select 1 from recon_days rd where rd.space_id = i.space_id and rd.config_id = i.config_id");
+    expect(text(acceptSql({ ...ctx, late: true }, p2))).toBe(s);
+    expect(dialect.sqlToQuery(acceptSql(ctx, p2)).params).not.toContain(NEAR_MISS.none);
   });
 
   it("accept: mutual unique best only; the claim is guarded by state and version; the group dated at its later member", () => {

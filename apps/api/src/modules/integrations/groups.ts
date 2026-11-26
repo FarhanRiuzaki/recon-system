@@ -1,7 +1,8 @@
 // Posting groups (stage 5, design §4.4 dispatch group, §4.6.5, O7/O10). A grouped variant's breaks join, in their
 // approval's transaction, the open group of their recon version, action, variant, key values, currency, sign and
 // period (the approval's date in Asia/Jakarta; at or after the cutoff, the next day; once the recon day of that date
-// has started closing, the next day too). Joining holds the recon's posting groups lock shared and closing holds it
+// has been prepared for sign-off, the next day too). A day-close group is sent when its recon day is signed off
+// (DEC-064: there is no day close), a cutoff group at its cutoff. Joining holds the recon's posting groups lock shared and closing holds it
 // exclusive, and the group row is locked while a break joins, so a close and a join never pass each other: a closed
 // group takes no one, and the joiner opens the next period's. A full group opens part + 1.
 import { type Context, fieldName } from "@starterkit/shared/conditions";
@@ -18,20 +19,23 @@ import { postingGroupsLock } from "../../kernel/locks";
 import { log } from "../../kernel/log";
 import { one, pageQuery, sortSql } from "../../kernel/pagination";
 import type { Ctx } from "../auth";
-import { closeMoment, queuePostingStats, reconDays } from "../engine";
+import { queuePostingStats, reconDays, windowOf } from "../engine";
 import { reconConfigs, reconConfigVersions } from "../recon";
 import { spaces, withSpace } from "../spaces";
 import { actionRuns, connectorVersions, postingGroupItems, postingGroups } from "./schema";
 
 const str = (v: unknown) => (v === null || v === undefined ? "" : String(v).trim());
 const nextDay = (d: string) => new Date(Date.parse(`${d}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
-/** When a day-close group of `period` is due: the recon day's close moment by its version's schedule; without one, the end of that day. */
-const dayCloseOf = (recon: Pick<ReconSpec, "close_at" | "schedule"> | null, period: string) =>
-  recon?.schedule ? closeMoment(recon, period) : new Date(`${nextDay(period)}T00:00:00+07:00`);
+/**
+ * When a day-close group of `period` is expected to go: its recon day's last scheduled run (the end of its run window,
+ * DEC-064); without a schedule, the end of that day. It goes when the day is signed off; past this it shows late.
+ */
+const dayCloseOf = (recon: Pick<ReconSpec, "schedule"> | null, period: string) =>
+  recon?.schedule ? windowOf(recon, period).end : new Date(`${nextDay(period)}T00:00:00+07:00`);
 /** ponytail: a group still open this long after it was due shows late (Today, the Posting groups tab); a setting if 5 minutes is wrong for a recon. */
 export const GROUP_LATE_MS = 5 * 60_000;
 
-/** Whether the recon day `d` of config `configId` has started closing (a `recon_days` row: closing or closed). */
+/** Whether the recon day `d` of config `configId` is prepared or signed off (a `recon_days` row). */
 async function dayStarted(tx: InTx, spaceId: string, configId: string, d: string): Promise<boolean> {
   const [r] = await tx.select({ d: reconDays.businessDate }).from(reconDays)
     .where(and(eq(reconDays.spaceId, spaceId), eq(reconDays.configId, configId), eq(reconDays.businessDate, d))).limit(1);
@@ -39,7 +43,7 @@ async function dayStarted(tx: InTx, spaceId: string, configId: string, d: string
 }
 
 /** Where a break joins: the recon version's grouped variant, and that version's spec (its schedule dates a day-close group). */
-export type GroupTarget = { spaceId: string; configId: string; configVersionId: string; change: string; actionIndex: number; variantIndex: number; actionName: string; variant: VariantSpec; recon: Pick<ReconSpec, "close_at" | "schedule"> | null };
+export type GroupTarget = { spaceId: string; configId: string; configVersionId: string; change: string; actionIndex: number; variantIndex: number; actionName: string; variant: VariantSpec; recon: Pick<ReconSpec, "schedule"> | null };
 
 /**
  * Break `m.itemId` of request `m.requestId` joins its group (approved at `now`, `m.context` its values then); answers
@@ -163,19 +167,14 @@ export async function groupsWaiting(tx: InTx, spaceId: string, configId: string,
 }
 
 /**
- * The per-minute job: every space's open groups whose time has come, each closed in its own transaction (one that
- * fails is logged and the others go on): a cutoff group at its cutoff; a day-close group whose day close never came
- * (no successful scheduled run, no published version) once its close moment + the version's grace has passed (an hour
- * when the version has none), review I3.
+ * The per-minute job: every space's cutoff groups whose cutoff has come, each closed in its own transaction (one that
+ * fails is logged and the others go on). A day-close group waits for its day's sign-off (DEC-064, signoff.ts).
  */
 export async function closeDueGroups(on: Tx, now = new Date()): Promise<number> {
   const ids = (await on.select({ id: spaces.id }).from(spaces)).map((s) => s.id);
   if (!ids.length) return 0;
-  const grace = sql`make_interval(mins => coalesce((${reconConfigVersions.spec} ->> 'grace_minutes')::int, 60))`;
   const due = await withSpace({ spaceIds: ids, userId: null }, (tx) => tx.select({ id: postingGroups.id, spaceId: postingGroups.spaceId }).from(postingGroups)
-    .leftJoin(reconConfigVersions, and(eq(reconConfigVersions.spaceId, postingGroups.spaceId), eq(reconConfigVersions.id, postingGroups.configVersionId)))
-    .where(and(eq(postingGroups.status, "open"), or(and(eq(postingGroups.at, "cutoff"), lte(postingGroups.closesAt, now)),
-      and(eq(postingGroups.at, "day_close"), sql`${postingGroups.closesAt} + ${grace} <= ${now.toISOString()}::timestamptz`)))), on);
+    .where(and(eq(postingGroups.status, "open"), eq(postingGroups.at, "cutoff"), lte(postingGroups.closesAt, now))), on);
   let n = 0;
   for (const g of due) {
     try {

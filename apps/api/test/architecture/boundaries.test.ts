@@ -249,9 +249,9 @@ const SECURITY_DEFINER: Record<string, string> = {
   recon_ensure_month_partitions: "adds a domain table's monthly partitions: only the owner may (drizzle/0009)",
   recon_analyze_month_partitions: "ANALYZE of partitions a run wrote: only the owner may (drizzle/0026)",
   recon_analyze_table: "ANALYZE of match tables a run wrote: only the owner may (drizzle/0033)",
-  recon_source_day_closed: "whether any space closed a source's date: a boolean, no other space's data (drizzle/0042)",
+  recon_source_day_closed: "whether any space signed off a source's date: a boolean, no other space's data (drizzle/0042, 0078)",
   recon_connector_used_by: "how many recons of active spaces call a connector: (connector_id, count) only, no recon or space data (drizzle/0058)",
-  recon_source_due: "when a source's dates are due by the recons reading it in every space: (source_id, min grace, min deadline, min close) only, no recon or space data (drizzle/0068)",
+  recon_source_due: "when a source's dates are due by the recons reading it in every space: (source_id, min grace, min deadline, min last scheduled run) only, no recon or space data (drizzle/0068, 0078)",
 };
 
 /** Security definer functions of the current schema, by name. */

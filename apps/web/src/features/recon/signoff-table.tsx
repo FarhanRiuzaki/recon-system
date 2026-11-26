@@ -17,7 +17,7 @@ import { reconSignoffs, type SignoffFilters } from "@/lib/shared/queries-recon";
 
 const dayText = (d: string) => formatDate(Date.parse(`${d}T00:00:00+07:00`));
 // short, so the table fits half the Overview at 1440 without scrolling sideways (review 24 Nov)
-const STAGE_LABEL: Record<SignoffRowDto["stage"], string> = { closed: "Waiting", prepared: "Prepared", signed: "Signed off" };
+const STAGE_LABEL: Record<SignoffRowDto["stage"], string> = { open: "Waiting", prepared: "Prepared", signed: "Signed off" };
 const nameOf = (by: SignoffRowDto["preparedBy"]) => by?.name ?? "A removed user";
 /** Who took the day's last step and when ("Signed by Ana", with who prepared it under), or a dash: one By column. */
 const By = ({ r }: { r: SignoffRowDto }) => {
@@ -32,9 +32,9 @@ const By = ({ r }: { r: SignoffRowDto }) => {
 };
 
 /**
- * A recon's closed days and their sign-off (Plan 5 Task 4, spec §11b), on its Overview: a reviewer or space admin
+ * A recon's business dates and their sign-off (Plan 5 Task 4, spec §11b, DEC-064: manual, no day close), on its Overview: a reviewer or space admin
  * prepares a day, another one signs it off (not whoever prepared it or resolved its breaks; a Superadmin may), never
- * while a break request of that day waits. Signing off freezes the day's breaks, so it asks first.
+ * while a break request of that day waits. Signing off freezes the day's items and sends its posting groups, so it asks first.
  */
 export function SignoffTable({ spaceId, id }: { spaceId: string; id: string }) {
   const def = useMemo(() => reconSignoffs(spaceId, id), [spaceId, id]);
@@ -73,16 +73,16 @@ export function SignoffTable({ spaceId, id }: { spaceId: string; id: string }) {
   return (
     <>
       {t.staleError && <Notice tone="warn" live>Couldn&apos;t refresh the sign-off; showing the days loaded before. {errorText(t.staleError)}</Notice>}
-      <Panel flush icon={SuccessIcon} title="Sign-off" count={t.count} description="Closed days, newest first · a reviewer or space admin prepares, another signs off"
+      <Panel flush icon={SuccessIcon} title="Sign-off" count={t.count} description="Business dates with items, newest first · a reviewer or space admin prepares, another signs off"
         toolbar={<Toolbar end={<><SavedViewsMenu /><ColumnsMenu columns={columns} hidden={t.hidden} onChange={t.setHidden} /></>}>{null}</Toolbar>}>
         <DataTable label="Sign-off" columns={columns} hidden={t.hidden} rows={t.rows} rowKey={(r) => r.date} loading={t.loading} sort={t.sort} onSortChange={t.onSortChange} paging={t.paging}
           error={t.loadError ? { title: "Couldn't load the sign-off", cause: errorText(t.loadError), onRetry: () => void t.query.refetch() } : null}
-          empty={{ icon: SuccessIcon, title: "No closed days yet", description: "A business date appears here once the recon closes it." }} />
+          empty={{ icon: SuccessIcon, title: "No business dates yet", description: "A business date appears here once a run takes in its records." }} />
       </Panel>
       {signing && (
         <ConfirmActionDialog open onOpenChange={(o) => { if (!o) setSigning(null); }} auditFields={false} reasons={[]}
           title={`Sign off ${dayText(signing)}`} description="Signing off closes the day's books for this recon."
-          impact={["Its unmatch items no longer change: matching, closing and requests on them are refused.", "It can't be reopened in this release."]}
+          impact={["Its items no longer change: runs leave them out, and matching, closing and requests on them are refused.", "Its posting groups, and every one before it, are sent now.", "It can't be reopened in this release."]}
           actionLabel="Sign off day"
           onConfirm={async () => { await step(signing, "sign"); setSigning(null); }} />
       )}

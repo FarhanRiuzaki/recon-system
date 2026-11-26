@@ -865,11 +865,6 @@
       ],
       "additionalProperties": false
     },
-    "grace_minutes": {
-      "type": "integer",
-      "minimum": 0,
-      "maximum": 1440
-    },
     "carry_over_days": {
       "anyOf": [
         {
@@ -889,56 +884,35 @@
         "a_to_b"
       ]
     },
-    "close_at": {
-      "type": "string",
-      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
-    },
     "schedule": {
-      "oneOf": [
-        {
-          "type": "object",
-          "properties": {
-            "kind": {
-              "type": "string",
-              "const": "interval"
-            },
-            "every_minutes": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 1440
-            }
-          },
-          "required": [
-            "kind",
-            "every_minutes"
-          ],
-          "additionalProperties": false
+      "type": "object",
+      "properties": {
+        "business_date_offset": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 7
         },
-        {
-          "type": "object",
-          "properties": {
-            "kind": {
-              "type": "string",
-              "const": "daily"
-            },
-            "at": {
-              "type": "string",
-              "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
-            },
-            "business_date_offset": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 7
-            }
-          },
-          "required": [
-            "kind",
-            "at",
-            "business_date_offset"
-          ],
-          "additionalProperties": false
+        "from": {
+          "type": "string",
+          "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+        },
+        "to": {
+          "type": "string",
+          "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+        },
+        "every_minutes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1440
         }
-      ]
+      },
+      "required": [
+        "business_date_offset",
+        "from",
+        "to",
+        "every_minutes"
+      ],
+      "additionalProperties": false
     },
     "approvals": {
       "type": "object",
@@ -5323,9 +5297,7 @@
   "required": [
     "sides",
     "passes",
-    "grace_minutes",
     "carry_over_days",
-    "close_at",
     "schedule"
   ],
   "additionalProperties": false,

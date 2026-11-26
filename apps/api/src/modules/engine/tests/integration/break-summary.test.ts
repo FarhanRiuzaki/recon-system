@@ -64,9 +64,9 @@ describe("GET breaks: sorts and row fields", () => {
   it("each row names the counterpart's side and whether runs check it again", async () => {
     const r = await list("?sort=amount");
     expect(r.map((x) => x.counterpartSide)).toEqual(["Source 2", "Source 2", "Source 2"]);
-    // carry over 1 day: a late-match "No counterpart" break is checked until D + 1; the others are not checked again
+    // carry over 1 day: every unmatch is checked until D + 1 (DEC-064), whatever its reason
     expect(r.find((x) => x.id === I.a1)!.recheck).toEqual({ kind: "until", date: "2026-11-03" });
-    expect(r.find((x) => x.id === I.a2)!.recheck).toEqual({ kind: "no" });
+    expect(r.find((x) => x.id === I.a2)!.recheck).toEqual({ kind: "until", date: "2026-11-03" });
   });
 });
 
@@ -92,23 +92,24 @@ describe("GET breaks: amount range and checked again", () => {
     expect((await list("?checked=no")).length).toBe(3);
     expect(await list("?checked=yes")).toEqual([]);
     expect((await facets()).checked).toEqual({ no: 3 });
-    // carry over always: the late-match No counterpart break is checked on every run
+    // carry over always: every unmatch no decision waits on is checked on every run (DEC-064)
     await db.update(reconConfigVersions).set({ spec: sql`jsonb_set(${reconConfigVersions.spec}, '{carry_over_days}', 'null'::jsonb)` }).where(eq(reconConfigVersions.configId, CFG));
     const yes = await list("?checked=yes");
-    expect(yes.map((x) => [x.id, x.recheck])).toEqual([[I.a1, { kind: "always" }]]);
+    expect(yes.every((x) => x.recheck.kind === "always")).toBe(true);
     expect((await list("?checked=no")).every((x) => x.recheck.kind === "no")).toBe(true);
-    expect((await facets()).checked).toEqual({ yes: 1, no: 2 });
-    expect((await facets("?checked=yes")).checked).toEqual({ yes: 1, no: 2 }); // its own filter left out
+    expect(yes.length).toBe(3);
+    expect((await facets()).checked).toEqual({ yes: 3 });
+    expect((await facets("?checked=yes")).checked).toEqual({ yes: 3 }); // its own filter left out
     // per recon (config id): its own filter left out, the others applied
     const byRecon = async (qs: string) => json<{ recon: Record<string, number> }>(call("GET", `/v1/spaces/${A}/breaks/facets${qs}`, { token: t.op }));
     expect((await byRecon(`?recon=${CFG}`)).recon).toEqual({ [CFG]: 3 });
-    expect((await byRecon("?checked=yes")).recon).toEqual({ [CFG]: 1 });
-    expect(await list(`?recon=${CFG}&checked=yes`)).toHaveLength(1);
+    expect((await byRecon("?checked=yes")).recon).toEqual({ [CFG]: 3 });
+    expect(await list(`?recon=${CFG}&checked=yes`)).toHaveLength(3);
     // both ticked (repeated in the query, as the filter and a saved view send them): no filter
     expect((await list("?checked=yes&checked=no")).length).toBe(3);
-    expect(await json<BreakSummaryDto>(summary(A, t.op, "?checked=yes"))).toMatchObject({ open: 1 });
+    expect(await json<BreakSummaryDto>(summary(A, t.op, "?checked=yes"))).toMatchObject({ open: 3 });
     // a signed-off day is not checked again
-    await db.insert(reconDays).values({ spaceId: A, configId: CFG, businessDate: D, status: "closed", signedAt: new Date() });
+    await db.insert(reconDays).values({ spaceId: A, configId: CFG, businessDate: D, status: "signed", preparedAt: new Date(), signedAt: new Date() });
     expect(await list("?checked=yes")).toEqual([]);
     expect((await list("?sort=amount")).find((x) => x.id === I.a1)!.recheck).toEqual({ kind: "no" });
     expect((await call("GET", `/v1/spaces/${A}/breaks?checked=maybe`, { token: t.op })).status).toBe(400);

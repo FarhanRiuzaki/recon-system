@@ -164,14 +164,14 @@ describe("POST run", () => {
     expect(await json(run(t.adm, SNAP_SRC, { businessDate: today }))).toEqual({ queued: true });
   });
 
-  it("REC-FUT-16: a date is closed when any config reading the source closed it, another space's through a share too", async () => {
+  it("REC-FUT-16: a date is frozen when any config reading the source signed it off, another space's through a share too", async () => {
     // the real hook (recon_source_day_closed), not a stand-in
     ingestHooks.dayClosed = dayClosed;
     const cfg = Bun.randomUUIDv7();
     await db.insert(reconConfigs).values({ id: cfg, spaceId: B, code: "reads-shared", name: "Reads shared" });
     await db.insert(reconSourceUses).values({ spaceId: B, configId: cfg, sourceSpaceId: A, sourceId: SNAP_SRC, field: "amount_minor", configName: "Reads shared" });
-    // a date still closing is not closed; one closed is, for the source's own space too
-    await db.insert(reconDays).values([{ spaceId: B, configId: cfg, businessDate: "2026-11-02", status: "closing" }, { spaceId: B, configId: cfg, businessDate: "2026-11-03", status: "closed" }]);
+    // a date only prepared is not frozen; one signed off is, for the source's own space too (DEC-064)
+    await db.insert(reconDays).values([{ spaceId: B, configId: cfg, businessDate: "2026-11-02", status: "prepared", preparedAt: new Date() }, { spaceId: B, configId: cfg, businessDate: "2026-11-03", status: "signed", preparedAt: new Date(), signedAt: new Date() }])
     expect(await json(run(t.adm, SNAP_SRC, { businessDate: "2026-11-02" }))).toEqual({ queued: true });
     const closed = await run(t.adm, SNAP_SRC, { businessDate: "2026-11-03" });
     expect([closed.status, await code(closed)]).toEqual([409, "day_closed"]);

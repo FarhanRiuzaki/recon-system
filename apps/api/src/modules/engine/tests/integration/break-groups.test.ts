@@ -16,8 +16,7 @@ import { workflows, workflowVersions } from "../../../approvals";
 import { records } from "../../../ingest";
 import { actionRuns, closeDueGroups, closeGroup, closeGroupsOfDay, connectors, connectorVersions, integrationsHandlers, joinGroup, postingGroupItems, postingGroups, sendRun } from "../../../integrations";
 import { boss, QUEUES } from "../../../../kernel/jobs";
-import { closeDay } from "../../breaks";
-import { closeMoment } from "../../rules";
+import { windowOf } from "../../rules";
 import { reconConfigVersions } from "../../../recon";
 import { spaceMembers, spaces, withSpace } from "../../../spaces";
 import { users } from "../../../users";
@@ -89,7 +88,7 @@ describe("joining a group in the approval", () => {
     for (const id of [I.a1, I.a2]) { await ask(id); await approve(id); }
     const [g, ...more] = await groups();
     expect(more).toEqual([]);
-    expect(g).toMatchObject({ status: "open", period: today(), part: 1, members: 2, totalMinor: 12_500n, currency: "IDR", negative: false, at: "day_close", closesAt: closeMoment(spec("", "", []) as never, today()),
+    expect(g).toMatchObject({ status: "open", period: today(), part: 1, members: 2, totalMinor: 12_500n, currency: "IDR", negative: false, at: "day_close", closesAt: windowOf(spec("", "", []) as never, today()).end,
       keys: [{ field: "break.reason", label: "Break reason", value: "No counterpart" }] });
     expect((await members()).map((m) => [m.itemId, m.ref])).toEqual([[I.a1, "P1"], [I.a2, "P2"]]);
     expect(await db.select().from(actionRuns)).toEqual([]);
@@ -108,9 +107,9 @@ describe("joining a group in the approval", () => {
     expect([g!.period, g!.closesAt?.toISOString()]).toEqual([tomorrow(), new Date(`${tomorrow()}T00:00:00+07:00`).toISOString()]);
   });
 
-  it("once today's recon day has started closing, or its group is closed, a joiner opens tomorrow's", async () => {
+  it("once today's recon day is prepared for sign-off, or its group is closed, a joiner opens tomorrow's", async () => {
     await setup(grouped({}));
-    await db.insert(reconDays).values({ spaceId: A, configId: cfg, businessDate: today(), status: "closing" });
+    await db.insert(reconDays).values({ spaceId: A, configId: cfg, businessDate: today(), status: "prepared", preparedAt: new Date() });
     await ask(I.a1); await approve(I.a1);
     expect((await groups()).map((g) => g.period)).toEqual([tomorrow()]);
     await db.delete(reconDays);
@@ -200,22 +199,22 @@ describe("what gets posted for a grouped variant", () => {
   });
 });
 
-describe("sign-off waits for the day's posting groups", () => {
-  it("prepare is refused while a group up to that day is open or its run waits; the day list says why", async () => {
+/** Today's recon day prepared by the reviewer and signed by the space admin, through the API (DEC-064: signing sends the groups). */
+async function signToday() {
+  expect((await call("POST", `/v1/spaces/${A}/recons/${cfg}/signoffs/prepare`, { token: t.rev, body: { date: today() } })).status).toBe(200);
+  expect((await call("POST", `/v1/spaces/${A}/recons/${cfg}/signoffs/sign`, { token: t.adm, body: { date: today() } })).status).toBe(200);
+}
+
+describe("signing a day sends its posting groups (DEC-064)", () => {
+  it("prepare doesn't wait for them; sign closes every open group up to that day and queues its run", async () => {
     await setup(grouped({}));
     await ask(I.a1); await approve(I.a1);
-    await db.insert(reconDays).values({ spaceId: A, configId: cfg, businessDate: today(), status: "closed", closedAt: new Date() });
-    const prepare = () => call("POST", `/v1/spaces/${A}/recons/${cfg}/signoffs/prepare`, { token: t.adm, body: { date: today() } });
-    const why = "1 posting group of this day is still open or being sent. Wait for it to be sent.";
-    let r = await prepare();
-    expect([r.status, ((await r.json()) as { error: { code: string; message: string } }).error]).toEqual([409, { code: "invalid_state", message: why }]);
     const list = await json<{ items: { date: string; blocked: string | null }[] }>(call("GET", `/v1/spaces/${A}/recons/${cfg}/signoffs`, { token: t.adm }));
-    expect(list.items.find((d) => d.date === today())!.blocked).toBe(why);
-    await withSpace({ spaceIds: [A], userId: null }, (tx) => closeGroupsOfDay(tx, A, cfg, today()));
-    expect((await prepare()).status).toBe(409); // its run is still queued
-    await db.update(actionRuns).set({ status: "posted" });
-    r = await prepare();
-    expect(r.status).toBe(200);
+    expect(list.items.find((d) => d.date === today())?.blocked ?? null).toBeNull();
+    expect((await groups()).map((g) => g.status)).toEqual(["open"]);
+    await signToday();
+    expect((await groups()).map((g) => g.status)).toEqual(["closed"]);
+    expect(await db.select({ s: actionRuns.status }).from(actionRuns)).toEqual([{ s: "queued" }]);
   });
 });
 
@@ -247,10 +246,11 @@ describe("closing a group", () => {
     expect((await groups())[0]!.status).toBe("closed");
   });
 
-  it("the recon day's close sends its day-close groups and its cutoff groups early; the per-minute job does the cutoff ones", async () => {
+  it("the recon day's sign-off sends its day-close groups and its cutoff groups early; the per-minute job does the cutoff ones, never a day-close one", async () => {
     await setup(grouped({}));
     await ask(I.a1); await approve(I.a1);
-    expect(await closeDay(db, { spaceId: A, configId: cfg }, today(), new Date(Date.now() + 3 * 86_400_000))).not.toBe("not_due");
+    expect(await closeDueGroups(db, new Date(Date.now() + 3 * 86_400_000))).toBe(0);
+    await signToday();
     expect((await groups()).map((g) => g.status)).toEqual(["closed"]);
     expect(await db.select({ s: actionRuns.status }).from(actionRuns)).toEqual([{ s: "queued" }]);
     await setup(grouped({ at: "cutoff", cutoff: "00:00" }));
@@ -281,13 +281,13 @@ describe("review fixes (stage 5)", () => {
     expect(await payloads()).toEqual([{ Amount: 12500, Remark: "P1" }]);
   });
 
-  it("I2: an approval while the day close is closing that day's groups waits for it, then joins the next day's group", async () => {
+  it("I2: an approval while the sign-off is closing that day's groups waits for it, then joins the next day's group", async () => {
     await setup(grouped({}));
     await ask(I.a1);
     const id = (await detail(I.a1, t.rev)).request!.id;
     const held = await holdTx((tx) => withSpace({ spaceIds: [A], userId: null }, async (s) => {
       await closeGroupsOfDay(s, A, cfg, today());
-      await s.insert(reconDays).values({ spaceId: A, configId: cfg, businessDate: today(), status: "closing" });
+      await s.insert(reconDays).values({ spaceId: A, configId: cfg, businessDate: today(), status: "prepared", preparedAt: new Date() });
     }, tx));
     try {
       const approving = call("POST", `/v1/spaces/${A}/approval-requests/${id}/approve`, { token: t.rev, body: {} });
@@ -300,7 +300,7 @@ describe("review fixes (stage 5)", () => {
     }
   });
 
-  it("I3: a day-close group its day close never came for shows late, then the per-minute job sends it once close + grace has passed", async () => {
+  it("I3: a day-close group past its day's last scheduled run shows late; it waits for the sign-off, never the per-minute job (DEC-064)", async () => {
     await setup(grouped({}));
     await ask(I.a1); await approve(I.a1);
     const late = new Date(Date.now() - 10 * 60_000);
@@ -309,10 +309,8 @@ describe("review fixes (stage 5)", () => {
     expect(page.items.map((g) => g.late)).toEqual([true]);
     const today_ = await json<{ posting: { reconId: string; lateGroups: number; failed: number; timeout: number; notSent: number }[] }>(call("GET", `/v1/spaces/${A}/today`, { token: t.op }));
     expect(today_.posting).toEqual([{ reconId: cfg, failed: 0, timeout: 0, notSent: 0, lateGroups: 1 }]);
-    const due = late.getTime() + 30 * 60_000; // the fixture's grace
-    expect(await closeDueGroups(db, new Date(due - 1000))).toBe(0);
-    expect(await closeDueGroups(db, new Date(due))).toBe(1);
-    expect((await groups()).map((g) => g.status)).toEqual(["closed"]);
+    expect(await closeDueGroups(db, new Date(late.getTime() + 86_400_000))).toBe(0);
+    expect((await groups()).map((g) => g.status)).toEqual(["open"]);
   });
 
   it("I4: a negative break opens a group of its own sign; absolute_swap sends each total without its sign", async () => {
@@ -342,7 +340,7 @@ describe("review fixes (stage 5)", () => {
     await db.insert(reconConfigVersions).values({ ...v!, id: old, version: 99, status: "retired", spec: sp });
     const [g1] = await groups();
     await db.update(postingGroups).set({ configVersionId: old }).where(eq(postingGroups.id, g1!.id));
-    expect(await closeDay(db, { spaceId: A, configId: cfg }, today(), new Date(Date.now() + 3 * 86_400_000))).not.toBe("not_due");
+    await signToday();
     const runs = await db.select().from(actionRuns);
     expect(runs.map((r) => [r.groupId === g1!.id, r.status, r.code]).sort()).toEqual([[false, "queued", null], [true, "failed", "build_error"]]);
     expect((await groups()).map((g) => g.status)).toEqual(["closed", "closed"]);

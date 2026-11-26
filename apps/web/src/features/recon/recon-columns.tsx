@@ -73,7 +73,7 @@ export function reconColumns(spaceId: string, live: LiveIndex | null): Column<Re
     } },
     { key: "schedule", header: "Runs", mobile: "meta", defaultHidden: true, className: "whitespace-nowrap", cell: (r) => {
       const s = of(r)?.schedule;
-      return s ? (s.kind === "interval" ? `Every ${s.every_minutes} min` : `Daily at ${s.at}`) : none;
+      return s ? (s.from === s.to ? `Once at ${s.from}` : `Every ${s.every_minutes} min, ${s.from}–${s.to}`) : none;
     } },
     { key: "today", header: "Business date", mobile: "meta", className: "whitespace-nowrap", cell: (r) => {
       const x = of(r);

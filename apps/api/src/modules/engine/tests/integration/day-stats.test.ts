@@ -18,7 +18,6 @@ import { BACKFILL_DAYS, queueBackfill, queueDay, recomputeDayStats, STATS_DELAY_
 import { D, D1, type DashboardFixture, noon, seedDashboard } from "../dashboard-fixture";
 import { ensureMonthPartitions } from "../../../../kernel/partitions";
 import { records } from "../../../ingest";
-import { closeDay } from "../../breaks";
 import { addDays, runRecon } from "../../service";
 import { ccyEq, makeSource, plainSource, put, recon, spec } from "../fixtures";
 
@@ -125,8 +124,7 @@ describe("recon.stats jobs", () => {
     const [sa, sb] = [await makeSource(F.A, plainSource()), await makeSource(F.A, plainSource())];
     const r = await recon(F.A, spec(sa.sourceId, sb.sourceId, [exact], 7));
     await put(sa, [{ ref: "L1", amount: 100n, date: D4 }]);
-    await runRecon(db, { ...r, mode: "daily", from: D4 });
-    expect(await closeDay(db, r, D4, new Date("2026-12-31T00:00:00+07:00"))).toBe("closed");
+    await runRecon(db, { ...r, mode: "daily", from: D4 }); // L1 unmatch at the run's end (DEC-064)
     await recompute(F.A, r.configId, D4);
     expect(rowsOf((await rowOf(F.A, r.configId, D4)).results)).toEqual({ unmatch: 1 });
 

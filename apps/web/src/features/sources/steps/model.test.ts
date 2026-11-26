@@ -62,7 +62,7 @@ describe("the connection on screen against the stored one (fix round 1, I2)", ()
   it("lookbackNote: what the look back protects against, and that a sequence says no date is complete", () => {
     expect(lookbackNote("int")).toBe("The watermark is a sequence: each pull starts this many ids before the last one, for a row that took a lower id "
       + "but committed after a higher one was read (a late commit), which would be skipped otherwise. Rows read twice are stored once. A sequence holds no time, "
-      + "so this source never says a date is complete: a recon waits for its close time and grace before it closes a date.");
+      + "so this source never says a date is complete: the source's health can't judge it by lag.");
     expect(lookbackNote("date")).toContain("at least 1 day (86,400 s)");
     expect(lookbackNote("time")).toBe("Each pull starts this far before the last one, for rows that commit late. Rows read twice are stored once.");
   });

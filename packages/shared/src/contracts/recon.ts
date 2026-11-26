@@ -245,28 +245,36 @@ export const PreviewApprovalBody = z.strictObject({
 export type PreviewApprovalBody = z.infer<typeof PreviewApprovalBody>;
 
 /**
- * A recon version's `spec` (spec §10): exactly two sides (a, then b), the passes in order, an optional measure, the
- * day's grace, carry over and close, and the schedule (Asia/Jakarta). Field names, operator kinds, pass numbers and the
- * rules across fields are checked against the sides' sources by checkReconSpec (apps/api/src/modules/recon/rules.ts).
+ * When a recon runs (DEC-064, Asia/Jakarta): business date D runs on D + `business_date_offset`, from `from` to `to`
+ * (both HH:MM, `from` ≤ `to`), every `every_minutes`. There is no day close: each run makes what stays unpaired unmatch,
+ * and the next runs pair it again within carry over. A window of one moment (`from` = `to`) runs once.
+ */
+export const ReconSchedule = z.strictObject({
+  business_date_offset: z.number().int().min(0).max(7),
+  from: clock,
+  to: clock,
+  every_minutes: z.number().int().min(1).max(1440),
+}).refine((s) => s.from <= s.to, { message: "End the run window at or after its start", path: ["to"] });
+export type ReconSchedule = z.infer<typeof ReconSchedule>;
+
+/**
+ * A recon version's `spec` (spec §10): exactly two sides (a, then b), the passes in order, an optional measure, carry
+ * over and the schedule (Asia/Jakarta). Field names, operator kinds, pass numbers and the rules across fields are
+ * checked against the sides' sources by checkReconSpec (apps/api/src/modules/recon/rules.ts).
  */
 export const ReconSpec = z.strictObject({
   sides: z.tuple([SideSpec, SideSpec]).refine(([a, b]) => a.key === "a" && b.key === "b", { message: "List side A first, then side B", path: [0, "key"] }),
   passes: z.array(PassSpec).max(PASSES_MAX).default([]),
   /** The measure the passes' amounts are (spec §8 "measure opsional"); a decimal field of both sides. */
   measure: z.strictObject({ field: FieldRef }).optional(),
-  grace_minutes: z.number().int().min(0).max(1440),
   /**
-   * Business days an unmatch stays checked for a counterpart of a later date (DEC-043): 0 = only on its own day, 1–31
-   * = up to day + N, null = always, until it matches or someone closes it (owner, 22 Nov: match / unmatch).
+   * Business days an unmatch stays checked for a counterpart of a later date (DEC-043, DEC-064): 0 = only by the runs
+   * of its own date, 1–31 = up to day + N, null = always, until it matches or someone closes it (owner, 22 Nov).
    */
   carry_over_days: z.number().int().min(0).max(31).nullable(),
   /** Which sides must find their counterpart (RECON_DIRECTIONS, DEC-055); absent = two-way (specs stored before it). */
   direction: z.enum(RECON_DIRECTIONS).optional(),
-  close_at: clock,
-  schedule: z.discriminatedUnion("kind", [
-    z.strictObject({ kind: z.literal("interval"), every_minutes: z.number().int().min(1).max(1440) }),
-    z.strictObject({ kind: z.literal("daily"), at: clock, business_date_offset: z.number().int().min(0).max(7) }),
-  ]),
+  schedule: ReconSchedule,
   /** Who approves each change of this recon's breaks (DEC-052 rev 2); absent = the default chain for every change. */
   approvals: ReconApprovalSpec.optional(),
 });
@@ -410,7 +418,7 @@ export type RunCounters = z.infer<typeof RunCounters>;
 /** How many pairs a simulation changes against the published version, per kind of change. */
 export const SimChangeCounts = z.object({ gained: z.number().int(), lost: z.number().int(), repaired: z.number().int(), kind: z.number().int() });
 /**
- * A business date of a run as it stood when the run and its close ended (the run's own items for a simulation, the live
+ * A business date of a run as it stood when the run ended (the run's own items for a simulation, the live
  * ones otherwise; not run-scoped: a carry-over date holds other runs' groups and breaks too): per pass,
  * groups matched and still suggested on that date (a group counts on its latest member's date) and items broken there with
  * their distinct references (per day: a reference broken on two dates counts on each); items still open per side on
@@ -421,7 +429,7 @@ export const RunDay = z.object({
   date: z.string(),
   passes: z.record(z.string(), z.object({ matched: z.number().int(), suggested: z.number().int(), broken: z.number().int(), brokenRefs: z.number().int() })),
   open: PerSide,
-  /** Items broken by time on that date (grace or day close; no pass broke them), per side; a pass's Duplicate stays under it. */
+  /** Items a run left unpaired on that date (no pass broke them; DEC-064, grace or day close before it), per side; a pass's Duplicate stays under it. */
   breaks: PerSide,
   /**
    * Current records on that date per side (taken in, less those whose record was replaced): a match rate's denominator.
@@ -432,7 +440,7 @@ export const RunDay = z.object({
   breakReasons: z.record(z.string(), PerSide).optional(),
   /** Items not required on that date per side (a one-way recon's side B, DEC-055); sent when there are any. */
   notRequired: PerSide.optional(),
-  /** The day closed (a live run's; a simulation closes nothing). */
+  /** The date is signed off (a live run's; DEC-064: no day close, the name kept for stored days). */
   closed: z.boolean(),
 });
 export type RunDay = z.infer<typeof RunDay>;
@@ -588,8 +596,8 @@ export const ReconSimChangeDto = z.object({
 });
 export type ReconSimChangeDto = z.infer<typeof ReconSimChangeDto>;
 
-/** Where a recon's business date stands (recon_days): no row = open, then closing (waits for data), closed. Sign-off is Plan 5's. */
-export const DAY_STATES = ["open", "closing", "closed"] as const;
+/** Where a recon's business date stands in its sign-off (recon_days, DEC-064): open (no row), prepared, signed (frozen). */
+export const DAY_STATES = ["open", "prepared", "signed"] as const;
 
 /** A source a recon of the space reads, as Today and Live day show it (its health judged now; null before its first publish). */
 export const LiveSourceDto = z.object({
@@ -604,20 +612,17 @@ export const LiveSourceDto = z.object({
 export type LiveSourceDto = z.infer<typeof LiveSourceDto>;
 
 /**
- * A recon's current business date (REC-F4): today for an interval recon, the last date due for a daily one. `day` = that
- * date as the last live run that covered it left it (its RunDay, null before any); `runId`/`runAt` = that run and when
- * it finished. `lastSuccessAt` = the last successful scheduled run; `stale` = none in twice its interval while it has
- * something to run (spec §9), `alertedAt` = the last freshness alert. `running` = a live run queued or under way.
+ * A recon's current business date (REC-F4): the date its schedule works on today (today − business_date_offset, DEC-064);
+ * `state` its sign-off stage. `day` = that date as the last live run that covered it left it (its RunDay, null before
+ * any); `runId`/`runAt` = that run and when it finished. `lastSuccessAt` = the last successful scheduled run; `stale` =
+ * none in twice its interval while its run window is on (spec §9), `alertedAt` = the last freshness alert. `running` = a live run queued or under way.
  * `openBreaks` = break items of every date not resolved yet. `sources` = its sides' source ids, side A first.
  */
 export const LiveReconDto = z.object({
   id: z.string(),
   name: z.string(),
   sides: z.tuple([z.object({ label: z.string(), sourceId: z.string() }), z.object({ label: z.string(), sourceId: z.string() })]),
-  schedule: z.discriminatedUnion("kind", [
-    z.object({ kind: z.literal("interval"), every_minutes: z.number().int() }),
-    z.object({ kind: z.literal("daily"), at: z.string(), business_date_offset: z.number().int() }),
-  ]),
+  schedule: z.object({ business_date_offset: z.number().int(), from: z.string(), to: z.string(), every_minutes: z.number().int() }),
   date: z.string(),
   state: z.enum(DAY_STATES),
   day: RunDay.nullable(),
@@ -660,18 +665,18 @@ export const ReconLiveDto = z.object({ recon: LiveReconDto, sources: z.array(Liv
 export type ReconLiveDto = z.infer<typeof ReconLiveDto>;
 
 // ------------------------------------------------------------------------------------------ day sign-off (Plan 5 Task 4)
-/** Where a closed day stands: closed (nobody prepared it), prepared, signed (frozen). */
-export const SIGNOFF_STAGES = ["closed", "prepared", "signed"] as const;
-/** GET …/recons/{configId}/signoffs: the recon's closed days, newest first; `stage` keeps one stage. */
+/** Where a business date stands in its sign-off (DEC-064): open (nobody prepared it), prepared, signed (frozen). */
+export const SIGNOFF_STAGES = DAY_STATES;
+/** GET …/recons/{configId}/signoffs: the recon's business dates that hold live items, newest first; `stage` keeps one stage. */
 export const SignoffListQuery = ListQuery.omit({ q: true }).extend({ sort: sortParam(SIGNOFF_SORTS), stage: z.enum(SIGNOFF_STAGES).optional() });
 export type SignoffListQuery = z.infer<typeof SignoffListQuery>;
 const Person = z.object({ id: z.string(), name: z.string().nullable() }).nullable();
 /**
- * One closed day: its breaks left open at close, the break requests still waiting on its items, who prepared and
+ * One business date: its unmatch items not resolved, the break requests still waiting on its items, who prepared and
  * signed it and when, and why the caller can't take its next step (`blocked`; null = they can; signed = no next step).
  */
 export const SignoffRowDto = z.object({
-  date: z.string(), closedAt: z.string().nullable(), openBreaks: z.number().int(), pending: z.number().int(),
+  date: z.string(), openBreaks: z.number().int(), pending: z.number().int(),
   stage: z.enum(SIGNOFF_STAGES), preparedBy: Person, preparedAt: z.string().nullable(), signedBy: Person, signedAt: z.string().nullable(),
   blocked: z.string().nullable(),
 });

@@ -336,12 +336,12 @@ export function approveVersion(ctx: Ctx, id: string, versionId: string): Promise
       .where(eq(reconConfigVersions.id, v.id)).returning() as [VersionRow];
     await tx.delete(reconSourceUses).where(and(eq(reconSourceUses.spaceId, spaceId), eq(reconSourceUses.configId, c.id)));
     const uses = new Map<string, typeof reconSourceUses.$inferInsert>();
-    // the deadline sourceHealth judges a date's file or snapshot by on the next morning: a daily config that runs a date
-    // at least a day later needs it by its run time; one that runs the same date (offset 0) or an interval config needs
-    // it during the date itself, which a check of yesterday's file can't express: no deadline from them
+    // the deadline sourceHealth judges a date's file or snapshot by on the next morning: a config that runs a date at
+    // least a day later needs it by the start of its run window; one that runs the same date (offset 0) needs it during
+    // the date itself, which a check of yesterday's file can't express: no deadline from it. No grace (DEC-064: none)
     const health = {
-      graceMinutes: spec.grace_minutes || null,
-      deadline: spec.schedule.kind === "daily" && spec.schedule.business_date_offset >= 1 ? spec.schedule.at : null,
+      graceMinutes: null,
+      deadline: spec.schedule.business_date_offset >= 1 ? spec.schedule.from : null,
     };
     usedFields(spec, directionMapped).forEach((fields, i) => {
       const sourceId = spec.sides[i]!.source_id;

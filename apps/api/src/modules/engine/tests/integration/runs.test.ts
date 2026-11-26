@@ -139,21 +139,22 @@ describe("runs and simulations through the API", () => {
     await drain();
     const done = await getRun(r.configId, q.id);
     expect([done.status, done.doneThrough, done.error, done.counters.passes]).toMatchObject(["succeeded", D, null, { 1: { matched: 2, suggested: 0, broken: 0 } }]);
-    // R3 and R9 waited when the run ended (its counters); the job closed the date since (past its close): breaks now
-    expect([done.counters.open, done.live]).toEqual([{ a: 1, b: 1 }, { matched: 2, suggested: 0, breaks: { a: 1, b: 1 }, open: { a: 0, b: 0 }, items: { a: 3, b: 3 }, breakReasons: { "No counterpart": { a: 1, b: 1 } } }]);
-    expect(done.days!.map((d) => [d.date, d.closed])).toEqual([[D, true]]);
+    // R3 and R9 found no pair: the run made them unmatch at once (DEC-064: nothing waits for a day close)
+    expect([done.counters.open, done.live]).toEqual([{ a: 0, b: 0 }, { matched: 2, suggested: 0, breaks: { a: 1, b: 1 }, open: { a: 0, b: 0 }, items: { a: 3, b: 3 }, breakReasons: { "No counterpart": { a: 1, b: 1 } } }]);
+    expect(done.days!.map((d) => [d.date, d.closed])).toEqual([[D, false]]);
     const list = await json<Page<ReconRunDto>>(call("GET", `${base(r.configId)}/runs`, { token: t.rv }));
     expect(list.items.map((x) => x.id)).toEqual([q.id]);
     expect((await json<Page<ReconRunDto>>(call("GET", `${base(r.configId)}/runs?mode=simulation`, { token: t.rv }))).total).toBe(0);
     const matched = await items(r.configId, q.id, "pass=1&side=a");
     expect([matched.total, matched.items.map((i) => i.extRef)]).toEqual([2, ["R1", "R2"]]);
     expect(matched.items[0]).toMatchObject({ status: "matched", amountMinor: "100", currency: "IDR", group: { passNo: 1, kind: "auto", evidence: { pass: 1, configVersionId: r.versionId } } });
-    // the run left R3 and R9 open; its job then closed the date (past its close), so they are breaks now
     expect((await items(r.configId, q.id, "status=break")).items.map((i) => [i.side, i.extRef, i.breakReason])).toEqual([["a", "R3", "No counterpart"], ["b", "R9", "No counterpart"]]);
-    // the next one may start now, but not over the closed date (Captain: a closed day runs again only as a rerun)
-    expect((await startRun(t.mk, r.configId)).status).toBe(409);
-    expect((await startRun(t.mk, r.configId, { from: D1 })).status).toBe(202);
+    // the next one may start now, over the same date too (no day close); a signed-off date refuses it
+    expect((await startRun(t.mk, r.configId, { from: D })).status).toBe(202);
     await drain();
+    await db.insert(reconDays).values({ spaceId: A, configId: r.configId, businessDate: D, status: "signed", preparedAt: new Date(), signedAt: new Date() });
+    const signed = await startRun(t.mk, r.configId, { from: D });
+    expect([signed.status, await message(signed)]).toEqual([409, "Some of these dates are signed off, so their items no longer change. Run dates that aren't signed off."]);
   });
 
   it("two requests at once (a double click): exactly one run with its job, the other gets the sentence", async () => {
@@ -217,12 +218,13 @@ describe("runs and simulations through the API", () => {
     const near = { no: 2, name: "Near", cardinality: "1:1", blocking: ["ext_ref"], accept: "suggest", on_ambiguous: "suggest", predicates: [{ op: "amount_abs_tol", field: "amount_minor", tolerance: { IDR: "1.00" } }, ccyEq] };
     const r = await recon(A, spec(sa.sourceId, sb.sourceId, [exact, near], 1));
     await json<ReconRunDto>(startRun(t.op, r.configId, { from: D, to: D }));
-    await drain(); // D closes: side A's P1 is a No counterpart break
+    await drain(); // the run leaves side A's P1 a No counterpart unmatch
     const q = await json<ReconRunDto>(startRun(t.op, r.configId, { from: D1, to: D1 }));
     await drain();
     const [row] = (await items(r.configId, q.id, "status=break&side=a")).items;
     expect([row!.extRef, row!.breakReason, row!.proposed]).toEqual(["P1", "No counterpart", { itemId: expect.any(String), side: "b", passNo: 2, extRef: "P1", amountMinor: "101", currency: "IDR", businessDate: D1 }]);
-    expect((await items(r.configId, q.id, "side=b")).items[0]!.proposed).toBeNull();
+    // side B's P1, unmatch at the run's end, gets side A's proposed back (DEC-064: a run again would)
+    expect((await items(r.configId, q.id, "side=b")).items[0]!.proposed).toMatchObject({ side: "a", passNo: 2, extRef: "P1" });
     // a proposal stands for a break only: the same item no longer a break shows none
     await db.update(reconItems).set({ status: "open" }).where(eq(reconItems.id, row!.id));
     expect((await items(r.configId, q.id, "side=a")).items[0]!.proposed).toBeNull();
@@ -260,7 +262,7 @@ describe("runs and simulations through the API", () => {
     await b.deleteAllJobs(QUEUES.reconHeavy);
   });
 
-  it("S3: a run's job that throws after closing a date still reads its days again", async () => {
+  it("a run's job that throws keeps the runner's own error; what the run did stands", async () => {
     const [sa, sb] = await sides();
     await put(sa, [{ ref: "T9", amount: 100n }]);
     const r = await recon(A, spec(sa.sourceId, sb.sourceId, [exact]));
@@ -268,11 +270,12 @@ describe("runs and simulations through the API", () => {
     await (await boss()).cancel(QUEUES.reconHeavy, q.id);
     const e = await runAndRefresh(probe, { spaceId: A, runId: q.id }, undefined, async (on, d) => {
       await runJob(on, d);
-      await db.insert(reconDays).values({ spaceId: A, configId: r.configId, businessDate: D, status: "closed", closedAt: new Date() });
       throw new Error("boom");
     }).catch((x: Error) => x.message);
     expect(e).toBe("boom");
-    expect((await getRun(r.configId, q.id)).days!.map((d) => [d.date, d.closed])).toEqual([[D, true]]);
+    // the run itself succeeded and left its one unpaired item unmatch (DEC-064: no day close)
+    const done = await getRun(r.configId, q.id);
+    expect([done.status, done.live?.breaks]).toEqual(["succeeded", { a: 1, b: 0 }]);
   });
 
   it("a group's members are capped at 50 with its member count", async () => {
@@ -501,29 +504,34 @@ describe("the Plan 3 gate through POST …/runs and the worker's handler", () =>
     const pass = (matched: number, suggested: number, broken: number, brokenRefs: number) => ({
       matched, suggested, broken, brokenRefs, matchedItems: side(matched), suggestedItems: side(suggested), brokenItems: side(broken / 2),
     });
-    // what the run itself did (its counters: 24 · 24 waiting when it ended); what stands now is `live` (below)
+    // what the run itself did (its counters: nothing waits when it ended, DEC-064); what stands now is `live` (below)
     expect(done.counters).toEqual({
       intake: side(1000), replaced: side(0),
-      passes: { 1: pass(937, 0, 30, 10), 2: pass(0, 14, 0, 0), 3: pass(0, 10, 0, 0) },
-      open: side(24),
+      // pass 3's 10 pairs span two dates: the earlier member was unmatch by then, so it got the pair proposed instead
+      passes: { 1: pass(937, 0, 30, 10), 2: pass(0, 14, 0, 0), 3: pass(0, 0, 0, 0) },
+      open: side(0),
     });
-    // per side the funnel adds up: 1,000 = 937 matched + 15 duplicate + 48 left (24 suggested, 24 waiting, closed since)
+    // per side the funnel adds up: 1,000 = 937 matched + 15 duplicate + 48 left (14 suggested, 34 unmatch at the run's end)
     const ps = Object.values(done.counters.passes);
     for (const k of ["a", "b"] as const) {
       const sum = (f: "matchedItems" | "suggestedItems" | "brokenItems") => ps.reduce((n, x) => n + x[f]![k], 0);
-      expect([sum("matchedItems"), sum("brokenItems"), sum("suggestedItems") + 24]).toEqual([937, 15, 48]);
+      expect([sum("matchedItems"), sum("brokenItems"), sum("suggestedItems") + 34]).toEqual([937, 15, 48]);
     }
 
     // the per-date strip (matched / suggested / waiting a · b / duplicate items), a group on its latest member's date;
-    // nothing waits once the dates closed
-    // the worker's handler then closed 2–5 Nov (past their close, data complete; Captain: any run closes, DEC-046): per
-    // side 937 matched, the 15 Duplicate, the 24 unconfirmed suggestions with their pass's reason (14 Amount differs,
-    // 10 Date differs), and of the 24 waiting 3 Currency differs, 1 Amount differs and 20 No counterpart
+    // nothing waits: per side 937 matched, the 15 Duplicate, the 14 suggestions waiting for a person (no day close turns
+    // them into unmatch, DEC-064), and the 34 the run left unpaired unmatch at once (pass 3's 10 among them, below)
     const after = await db.select({ side: reconItems.side, status: reconItems.status, reason: reconItems.breakReason, n: sql<number>`count(*)::int` }).from(reconItems)
       .where(and(eq(reconItems.configId, gate.configId), isNull(reconItems.simRunId))).groupBy(reconItems.side, reconItems.status, reconItems.breakReason)
       .orderBy(reconItems.side, reconItems.status, reconItems.breakReason);
-    const perSide = [["break", "Amount differs", 15], ["break", "Currency differs", 3], ["break", "Date differs", 10], ["break", "Duplicate", 15], ["break", "No counterpart", 20], ["matched", null, 937]];
-    expect(after.map((x) => [x.side, x.status, x.reason, x.n])).toEqual([...perSide.map((x) => ["a", ...x]), ...perSide.map((x) => ["b", ...x])]);
+    // pass 3's 10 pairs a day apart: side A's member was unmatch "No counterpart" when side B's came (its pair proposed
+    // on it), side B's then "Date differs" against it
+    const perSide = (b: boolean) => [["break", "Amount differs", 1], ["break", "Currency differs", 3], ...(b ? [["break", "Date differs", 10]] : []), ["break", "Duplicate", 15],
+      ["break", "No counterpart", b ? 20 : 30], ["matched", null, 937], ["suggested", null, 14]];
+    expect(after.map((x) => [x.side, x.status, x.reason, x.n])).toEqual([...perSide(false).map((x) => ["a", ...x]), ...perSide(true).map((x) => ["b", ...x])]);
+    const proposed = await db.select({ n: sql<number>`count(*)::int` }).from(reconItems)
+      .where(and(eq(reconItems.configId, gate.configId), isNull(reconItems.simRunId), eq(reconItems.status, "break"), eq(reconItems.proposedPass, 3)));
+    expect(proposed[0]!.n).toBe(20); // both members of each pair
 
     const days = (await getRun(gate.configId, q.id)).days!;
     const strip = days.map((d) => {
@@ -531,21 +539,21 @@ describe("the Plan 3 gate through POST …/runs and the worker's handler", () =>
       const sum = (f: "matched" | "suggested" | "broken") => p.reduce((n, x) => n + x[f], 0);
       return [d.date, sum("matched"), sum("suggested"), d.open.a, d.open.b, sum("broken")];
     });
-    // the suggestions are breaks since the close (their pairs kept): no date counts them as suggested any more
+    // the suggestions wait for a person on their group's date (no day close breaks them, DEC-064); nothing waits
     expect(strip).toEqual([
-      ["2026-11-02", 312, 0, 0, 0, 12],
-      ["2026-11-03", 313, 0, 0, 0, 9],
-      ["2026-11-04", 312, 0, 0, 0, 9],
+      ["2026-11-02", 312, 5, 0, 0, 12],
+      ["2026-11-03", 313, 5, 0, 0, 9],
+      ["2026-11-04", 312, 4, 0, 0, 9],
       ["2026-11-05", 0, 0, 0, 0, 0],
     ]);
-    // every day closed: per side 48 breaks of time (3 currency + 1 amount + 20 no counterpart + 24 unconfirmed), nothing waits
-    expect(days.every((d) => d.closed)).toBe(true);
+    // no date is signed off; per side 34 unmatch the run left (no pass broke them) besides the 15 Duplicate
+    expect(days.some((d) => d.closed)).toBe(false);
     expect((await getRun(gate.configId, q.id)).live).toEqual({
-      matched: 937, suggested: 0, breaks: side(48), open: side(0), items: side(1000),
-      breakReasons: { "Amount differs": side(15), "Currency differs": side(3), "Date differs": side(10), Duplicate: side(15), "No counterpart": side(20) },
+      matched: 937, suggested: 14, breaks: side(34), open: side(0), items: side(1000),
+      breakReasons: { "Amount differs": side(1), "Currency differs": side(3), "Date differs": side(0, 10), Duplicate: side(15), "No counterpart": side(30, 20) },
     });
     // the Breaks tab: one reason, the run's own dates only; a reason the engine never writes is refused
-    expect((await items(gate.configId, q.id, "reason=No%20counterpart&dates=own")).total).toBe(40);
+    expect((await items(gate.configId, q.id, "reason=No%20counterpart&dates=own")).total).toBe(50);
     expect((await call("GET", `${base(gate.configId)}/runs/${q.id}/items?reason=Gone`, { token: t.rv })).status).toBe(400);
     expect(days.reduce((n, d) => n + d.passes["1"]!.brokenRefs, 0)).toBe(10);
     // a run whose days are missing (before 0032, or failed): GET answers 200 without them (it never aggregates on the
@@ -566,15 +574,16 @@ describe("the Plan 3 gate through POST …/runs and the worker's handler", () =>
 
     const total = async (q2: string) => (await items(gate.configId, q.id, q2)).total;
     // pass 1 = its 937 pairs and the 30 items it broke as Duplicate
-    expect([await total("pass=1"), await total("pass=2"), await total("pass=3")]).toEqual([1904, 28, 20]);
-    expect([await total("status=break"), await total("status=suggested"), await total("status=open&side=a"), await total("status=open&side=b")]).toEqual([126, 0, 0, 0]);
+    // pass 3 = none: its 10 pairs are proposals on unmatch items (a person matches them in one click)
+    expect([await total("pass=1"), await total("pass=2"), await total("pass=3")]).toEqual([1904, 28, 0]);
+    expect([await total("status=break"), await total("status=suggested"), await total("status=open&side=a"), await total("status=open&side=b")]).toEqual([98, 28, 0, 0]);
     const dup = await items(gate.configId, q.id, "pass=1&status=break&pageSize=100");
     expect([new Set(dup.items.map((i) => i.breakReason)), new Set(dup.items.map((i) => i.breakPass)), new Set(dup.items.map((i) => i.extRef)).size])
       .toEqual([new Set(["Duplicate"]), new Set([1]), 10]);
-    // the date filter counts as the strip does: 3 Nov = 313 pairs + 8 suggested (both sides) + 16 waiting + 9 duplicate,
-    // the suggested and waiting ones breaks since the close
+    // the date filter counts as the strip does: 3 Nov = its 313 pairs, its suggestions on their group's date, its
+    // unmatch on its own date and its 9 duplicate items
     expect(await total("date=2026-11-03")).toBe(2 * 313 + 2 * 8 + 16 + 9);
-    // a break counts on its own date, as the day's reasons do (a Date differs pair kept from close is on two dates)
+    // an unmatch counts on its own date, as the day's reasons do
     const reasons5 = Object.values(days.find((d) => d.date === "2026-11-05")!.breakReasons!).reduce((n, x) => n + x.a + x.b, 0);
     expect([await total("date=2026-11-03&pass=1&status=matched"), await total("date=2026-11-05&status=break"), reasons5]).toEqual([626, 4, 4]);
     // a pair is one row: the item's group has both sides' records

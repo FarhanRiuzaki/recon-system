@@ -48,10 +48,9 @@ export type StepCtx = {
   /** ingest's currentRecord over `records` (a record that counts now), built on the step's transaction. */
   current: SQL;
   /**
-   * Carry over > 0 (DEC-047): the pool of every pass also holds the window's "No counterpart" breaks (late_match and
-   * that reason). An automatic pass that pairs a
-   * break closes it as AUTO_MATCHED_LATE_DATA; a suggesting pass leaves it a break with the pair proposed (proposeSql).
-   * With carry over 0 (KSEI) a break never meets later data.
+   * Carry over > 0: a suggesting pass that pairs an unmatch of the window leaves it unmatch with the pair proposed
+   * (proposeSql, DEC-047), cleared once the pair is taken. An automatic pass that pairs an unmatch (the pool holds every
+   * one, DEC-064) closes it as AUTO_MATCHED_LATE_DATA, whatever the carry over.
    */
   late: boolean;
   /** A one-way recon (direction a_to_b, DEC-055, DEC-062): a side-B item is never a break; without a pair it is not_required. */
@@ -154,23 +153,18 @@ export function predicateSql(p: Predicate, i: number): { join?: SQL; filter?: SQ
 }
 
 /**
- * The statuses of the pool: open, and with `late` (carry over > 0) the window's "No counterpart" breaks (late_match
- * and that reason: DEC-047, Captain) and a one-way recon's not_required items (DEC-055) but those still in a suggested group
- * (side A's pair after day close, DEC-062). A near miss (currency, amount or date differs), a Duplicate or an unconfirmed
- * suggestion's break keeps its own decision and stays out.
+ * The statuses of the pool (DEC-064): open, every unmatch whatever its reason (a run makes what stays unpaired unmatch
+ * at once, and the next runs pair it again within carry over), and a one-way recon's not_required items (DEC-055) but
+ * those still in a suggested group (side A's pair, DEC-062). An unmatch waiting for a decision (force match, write-off,
+ * posting) stays out, a person is deciding it; so does every item of a signed-off date, the day is frozen (live only, a
+ * simulation's own items are never signed off).
  */
-// a late-match break waiting for a decision (posting, write-off) or on a signed-off date stays out: a person is deciding
-// it, or the day is frozen (blind review I5; live only, a simulation's own items are never signed off)
-const poolStatus = (c: StepCtx): SQL => (c.late
-  ? sql`(i.status = 'open' or (((i.status = 'break' and i.late_match and i.break_reason = ${NO_COUNTERPART}
-      and i.break_state is distinct from 'pending_approval') or (i.status = 'not_required' and not exists (select 1 from match_members sm
+const poolStatus = (_c: StepCtx): SQL => sql`(i.status = 'open' or (((i.status = 'break' and i.break_state is distinct from 'pending_approval')
+      or (i.status = 'not_required' and not exists (select 1 from match_members sm
         join match_groups sgr on sgr.space_id = sm.space_id and sgr.id = sm.group_id and sgr.kind = 'suggested' and sgr.reversed_by is null
         where sm.space_id = i.space_id and sm.item_id = i.id)))
       and (i.sim_run_id is not null or not exists (select 1 from recon_days rd where rd.space_id = i.space_id and rd.config_id = i.config_id
-        and rd.business_date = i.business_date and rd.signed_at is not null))))`
-  : sql`i.status = 'open'`);
-/** The one break reason that rejoins the pool across days (breaks.ts NEAR_MISS.none; not imported: breaks.ts imports this file). */
-const NO_COUNTERPART = "No counterpart";
+        and rd.business_date = i.business_date and rd.signed_at is not null))))`;
 
 /** Side `s`'s pool items of the window, live or of the step's simulation (the `i` alias of recon_items). */
 const openItems = (c: StepCtx, s: 0 | 1): SQL => sql`i.space_id = ${c.spaceId} and i.config_id = ${c.configId} and i.side = ${c.sides[s].key} and ${poolStatus(c)}
@@ -288,7 +282,7 @@ function writePairs(c: StepCtx, p: PassSpec, kind: "auto" | "suggested", chosen:
 const accepted = (p: PassSpec) => (p.accept === "auto" ? "auto" : "suggested");
 
 /** Each candidate with its side's smallest distance (best_a, best_b) and how many of its candidates share it (n_a, n_b). */
-const RANKED = sql`r1 as (select c.*, min(dist) over (partition by a_id) as best_a, min(dist) over (partition by b_id) as best_b from c),
+export const RANKED = sql`r1 as (select c.*, min(dist) over (partition by a_id) as best_a, min(dist) over (partition by b_id) as best_b from c),
   r2 as (select r1.*, count(*) filter (where dist = best_a) over (partition by a_id) as n_a,
       count(*) filter (where dist = best_b) over (partition by b_id) as n_b from r1)`;
 

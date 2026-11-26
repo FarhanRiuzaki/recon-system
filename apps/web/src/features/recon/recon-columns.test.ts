@@ -21,7 +21,7 @@ import { reconColumns } from "./recon-columns";
 describe("the recons list's live columns (owner, 22 Nov: as the sources list)", () => {
   const row: ReconRowDto = { id: "r1", spaceId: "s", code: "bifast", name: "BI-FAST", status: "active", publishedVersion: 1, draftStatus: null, createdAt: "2026-11-01T00:00:00.000Z" };
   const live: LiveReconDto = {
-    id: "r1", name: "BI-FAST", sides: [{ label: "Core", sourceId: "a" }, { label: "Switch", sourceId: "b" }], schedule: { kind: "interval", every_minutes: 2 },
+    id: "r1", name: "BI-FAST", sides: [{ label: "Core", sourceId: "a" }, { label: "Switch", sourceId: "b" }], schedule: { business_date_offset: 0, from: "00:00", to: "23:59", every_minutes: 2 },
     date: "2026-11-22", state: "open", runId: "x", runAt: null, lastSuccessAt: "2026-11-22T00:00:00.000Z", stale: false, alertedAt: null, running: null, openBreaks: 7,
     day: { date: "2026-11-22", passes: { 1: { matched: 90, suggested: 4, broken: 0, brokenRefs: 0 } }, open: { a: 6, b: 2 }, breaks: { a: 0, b: 0 }, items: { a: 100, b: 98 }, closed: false },
   };

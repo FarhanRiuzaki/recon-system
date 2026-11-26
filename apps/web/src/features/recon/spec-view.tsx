@@ -128,7 +128,7 @@ export function SideSummary({ i, side, source, fields }: { i: 0 | 1; side: Recon
 
 /**
  * A recon version's spec as text (ui-standard §1a "Version": values as text, never disabled inputs, no inspector): in the
- * setup's order, the two sides, the passes in run order, then the schedule and day close as steps (owner, 22 Nov: tidy and clear for a reader).
+ * setup's order, the two sides, the passes in run order, then the schedule as steps (owner, 22 Nov: tidy and clear for a reader).
  */
 export function SpecView({ spaceId, spec, onEdit, live }: {
   spaceId: string; spec: ReconSpec;
@@ -198,7 +198,7 @@ export function SpecView({ spaceId, spec, onEdit, live }: {
         </dl>
       </Panel>
 
-      <Panel title={titled("Schedule and day close", diff && facts.some((f) => f.key !== "measure" && f.key in diff.settings))} actions={edit(3)}>
+      <Panel title={titled("Schedule", diff && facts.some((f) => f.key !== "measure" && f.key in diff.settings))} actions={edit(3)}>
         <dl className="flex flex-wrap gap-x-8 gap-y-2">
           {facts.filter((f) => f.key !== "measure").map((f) => (
             <div key={f.key} className="grid gap-0.5">

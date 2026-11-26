@@ -1,4 +1,4 @@
-// Day sign-off (Plan 5 Task 4, spec §11b).
+// Day sign-off (Plan 5 Task 4, spec §11b, DEC-064: manual, no day close): any date that holds live items.
 import { beforeEach, describe, expect, it } from "bun:test";
 import type { SignoffRowDto } from "@starterkit/shared/contracts/recon";
 import type { SpaceRole } from "@starterkit/shared/spaces";
@@ -10,7 +10,7 @@ import { activity } from "../../../audit";
 import { records } from "../../../ingest";
 import { spaceMembers, spaces } from "../../../spaces";
 import { users } from "../../../users";
-import { reconDays, reconItems } from "../../schema";
+import { reconDayStats, reconDays, reconItems } from "../../schema";
 import { D, makeSource, plainSource, put, recon, spec } from "../fixtures";
 
 const idOf = async (username: string) => (await db.select({ id: users.id }).from(users).where(eq(users.username, username)))[0]!.id;
@@ -61,20 +61,25 @@ const rows = async (token: string) => (await json<{ items: SignoffRowDto[] }>(ca
 
 describe("day sign-off: prepared by one lead, signed by another; a signed day is frozen", () => {
   beforeEach(async () => {
-    await db.insert(reconDays).values({ spaceId: A, configId: cfg, businessDate: D, status: "closed", closedAt: new Date(), counters: { open: 2 } });
+    // the dashboard rollup holds a row per date with live items: the list's dates
+    await db.insert(reconDayStats).values({ spaceId: A, configId: cfg, businessDate: D });
     await db.insert(spaceMembers).values({ spaceId: A, userId: await idOf("apple"), role: "reviewer" }); // apple: operator + reviewer
   });
 
-  it("a day not closed can't be prepared; an operator can't; the preparer can't sign; another reviewer signs", async () => {
-    expect(await code(await so("prepare", t.rev, "2020-01-01"))).toBe("invalid_state");
+  it("a day after today can't be prepared; an operator can't; the preparer can't sign; another reviewer signs", async () => {
+    const future = await so("prepare", t.rev, "2999-01-01");
+    expect([future.status, await code(future)]).toEqual([409, "invalid_state"]);
     expect((await so("prepare", t.op)).status).toBe(403); // guard: reviewer or space admin
-    expect((await rows(t.op))[0]).toMatchObject({ stage: "closed", openBreaks: 2, blocked: "Only a reviewer or space admin of this space signs off days." });
+    expect((await rows(t.op))[0]).toMatchObject({ stage: "open", openBreaks: 2, blocked: "Only a reviewer or space admin of this space signs off days." });
+    expect(await db.select().from(reconDays)).toEqual([]);
     expect(await json(so("prepare", t.rev))).toEqual({ date: D, stage: "prepared" });
     expect((await rows(t.rev))[0]!.blocked).toBe("You prepared this day. Another reviewer or space admin signs it off.");
     const self = await so("sign", t.rev);
     expect([self.status, await code(self)]).toEqual([409, "self_approval"]);
     expect(await json(so("sign", t.op2))).toEqual({ date: D, stage: "signed" });
     expect((await rows(t.op))[0]).toMatchObject({ stage: "signed", preparedBy: { id: await idOf("google") }, signedBy: { id: await idOf("apple") }, blocked: "Signed off." });
+    expect((await json<{ total: number }>(call("GET", `/v1/spaces/${A}/recons/${cfg}/signoffs?stage=open`, { token: t.op }))).total).toBe(0);
+    expect((await json<{ total: number }>(call("GET", `/v1/spaces/${A}/recons/${cfg}/signoffs?stage=signed`, { token: t.op }))).total).toBe(1);
     // frozen: the day's break no longer changes
     const frozen = await call("POST", path(I.a1, "/close"), { token: t.op, body: { resolution: "NO_ACTION", note: "x" } });
     expect([frozen.status, await code(frozen)]).toEqual([409, "day_closed"]);

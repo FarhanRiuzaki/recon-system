@@ -11,7 +11,7 @@ import { type Chip, statusChip } from "@/lib/shared/categories";
 import { doneChip, isLive, itemsText, projectionText, rangeText, rateText, standingTotals, FAILED_CHIP, stoppedLine } from "./run-model";
 import { STALL_TEXT } from "./use-recons";
 
-/** A run in one strip (the run page's head, the recon's last run on its Overview): its state, dates, counts and what day close does; `action` ends the strip. */
+/** A run in one strip (the run page's head, the recon's last run on its Overview): its state, dates, counts and what a live run makes unmatch; `action` ends the strip. */
 export function RunSummary({ run, spec, labels, stalled = false, action }: { run: ReconRunDto; spec: ReconSpec; labels: readonly [string, string]; stalled?: boolean; action?: ReactNode }) {
   const t = standingTotals(run, spec);
   const live = isLive(run);
@@ -28,7 +28,7 @@ export function RunSummary({ run, spec, labels, stalled = false, action }: { run
         <span role="status" className="text-body-sm text-fg">
           {run.status === "failed" ? stoppedLine(run) : `${what} · ${rangeText(run.from, run.to)} · ${itemsText(t.items)}${at}`}{stalled ? ` · ${STALL_TEXT}` : ""}
         </span>
-        {day && <span className="text-caption text-fg-3 tabular">At day close: {day}</span>}
+        {day && <span className="text-caption text-fg-3 tabular">Unmatch after a live run: {day}</span>}
       </div>
       {action}
       </div>
