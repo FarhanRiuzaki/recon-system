@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activeChild, centerScrollTop, crumbs, isActive, isSubPage, NAV, navCount, navFor, navLinkName, navSpaceId, onItem, pagePerm, pagesFor, SOON_REASON, soonCaption, spaceEntry, type NavItem } from "./nav";
+import { activeChild, centerScrollTop, crumbs, importsNavCount, isActive, isSubPage, NAV, navCount, navFor, navLinkName, navSpaceId, onItem, pagePerm, pagesFor, SOON_REASON, soonCaption, spaceEntry, type NavItem } from "./nav";
 import { DEFAULT_PREFS, viewHref } from "./prefs";
 import { PERMISSIONS } from "@starterkit/shared/permissions";
 
@@ -24,9 +24,24 @@ describe("navFor", () => {
 
   it("all permissions: every item but the hidden template pages, groups in the designed order", () => {
     const all = NAV.filter((n) => !n.hidden).map((n) => n.label);
-    expect(all).toEqual(["Dashboard", "Operation result", ...WORK_SETUP, "Members", "Workflows", "Users", "Roles", "Permissions", "Open API", "Activity log", "Sign-in log", "Profile"]);
+    expect(all).toEqual(["Dashboard", "Operation result", ...WORK_SETUP, "Monitoring", "Feeds", "Members", "Workflows", "Users", "Roles", "Permissions", "Open API", "Activity log", "Sign-in log", "Profile"]);
     expect(labels(new Set(PERMISSIONS))).toEqual(all);
-    expect(navFor(new Set(PERMISSIONS)).map((s) => s.id)).toEqual(["main", "work", "setup", "space", "access", "audit", "personal"]);
+    expect(navFor(new Set(PERMISSIONS)).map((s) => s.id)).toEqual(["main", "work", "setup", "import", "space", "access", "audit", "personal"]);
+  });
+
+  it("the Import group (DEC-066): its own group under Setup, global, Monitoring first, both with import.view; adding a feed needs import.manage", () => {
+    const g = navFor(new Set(["import.view"])).find((x) => x.id === "import")!;
+    expect([g.label, g.items.map((n) => [n.label, n.href, n.shortcut, n.space])]).toEqual(["Import", [["Monitoring", "/imports", "G G", undefined], ["Feeds", "/imports/feeds", "G F", undefined]]]);
+    expect(navFor(new Set()).some((x) => x.id === "import")).toBe(false);
+    expect([pagePerm("/imports"), pagePerm("/imports/feeds"), pagePerm("/imports/feeds/x"), pagePerm("/imports/feeds/new")]).toEqual(["import.view", "import.view", "import.view", "import.manage"]);
+    expect(crumbs("/imports/feeds/x", new Set(["import.view"]))).toEqual([{ label: "Feeds", href: "/imports/feeds", icon: "feeds" }]);
+  });
+
+  it("the Monitoring badge counts open import issues, a failure", () => {
+    expect(importsNavCount("/imports", 3)).toEqual({ value: 3, text: "3", name: "3 need attention", tone: "down" });
+    expect(importsNavCount("/imports", 0)?.name).toBe("");
+    expect(importsNavCount("/imports", undefined)).toBeNull();
+    expect(importsNavCount("/imports/feeds", 3)).toBeNull();
   });
 
   it("Projects and Design system are not in the navigation, but their routes stay guarded and in the breadcrumb", () => {

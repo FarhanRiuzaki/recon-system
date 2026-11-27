@@ -18,8 +18,8 @@ import type { SpaceRowDto } from "@starterkit/shared/contracts/spaces";
 import { api } from "@/lib/client/api";
 import { useAuth } from "@/lib/client/auth-context";
 import { usePrefs } from "@/lib/client/prefs-context";
-import { activeChild, centerScrollTop, countText, NAV, type NavCount, type NavCounts, navCount, navFor, navLinkName, navSpaceId, onItem, spaceEntry } from "@/lib/shared/nav";
-import { APPROVALS_KEY, navCountsQuery, spaceOptions } from "@/lib/shared/queries";
+import { activeChild, centerScrollTop, countText, importsNavCount, NAV, type NavCount, type NavCounts, navCount, navFor, navLinkName, navSpaceId, onItem, spaceEntry } from "@/lib/shared/nav";
+import { APPROVALS_KEY, importIssues, navCountsQuery, spaceOptions } from "@/lib/shared/queries";
 import { viewHref } from "@/lib/shared/prefs";
 import { goKeys } from "@/lib/shared/shortcuts";
 import { NavGlyph } from "./nav-icon";
@@ -78,6 +78,21 @@ export function useNavCounts(): NavCounts | undefined {
   return useQuery({ queryKey: q.key, queryFn: () => api<NavCounts>(q.url), enabled: !!id, refetchInterval: NAV_COUNTS_POLL_MS, refetchOnWindowFocus: true }).data;
 }
 
+/** How often the Monitoring badge is read again while the window is open (it also refreshes on focus). */
+const IMPORT_ISSUES_POLL_MS = 60_000;
+
+/**
+ * The Monitoring badge (GET /api/imports/issues, DEC-066) for a viewer with import.view, undefined until it arrives (not
+ * prefetched: the badge fades in like the space counts); global, apart from the space counts.
+ */
+export function useImportIssues(): number | undefined {
+  const { perms } = useAuth();
+  return useQuery({
+    queryKey: importIssues.key, queryFn: () => api<{ count: number }>(importIssues.url), enabled: perms.has("import.view"),
+    refetchInterval: IMPORT_ISSUES_POLL_MS, refetchOnWindowFocus: true,
+  }).data?.count;
+}
+
 /**
  * A nav item's count badge: at the row's end in the full sidebar and the drawer; at the icon's top-right corner in the
  * 64 px rail (`rail`: always, collapsed; "below-xl": the sidebar's rail below 1280 px). Hidden from screen readers
@@ -130,6 +145,7 @@ export function Sidebar({ mark, wordmark, space }: { mark: ReactNode; wordmark: 
   const navHref = useNavHref();
   const sections = navFor(perms, useNoSpace());
   const counts = useNavCounts();
+  const issues = useImportIssues();
   const scrollRef = useRef<HTMLDivElement>(null);
   useCenterCurrent(scrollRef, path);
   const collapsed = prefs.sidebar === "collapsed";
@@ -183,7 +199,7 @@ export function Sidebar({ mark, wordmark, space }: { mark: ReactNode; wordmark: 
               if (n.soon) return <SoonItem key={n.href} item={n} captionId={`nav-soon-${s.id}`} text={cn("hidden", label("xl:inline"))} dot={collapsed ? undefined : "xl:hidden"} hideTip={collapsed ? undefined : "xl:hidden"} row={cn("h-9 justify-center", square, !collapsed && "xl:h-8 xl:justify-start xl:text-body-sm")} />;
               const active = onItem(path, n);
               const child = active ? activeChild(n, path, sp) : null;
-              const count = navCount(n.space, counts);
+              const count = navCount(n.space, counts) ?? importsNavCount(n.href, issues);
               return (
                 <div key={n.href} className="grid gap-0.5">
                 {n.children?.length ? <SidebarRailMenu item={n} active={active} child={child} collapsed={collapsed} /> : null}

@@ -4,8 +4,9 @@ import { NAV_COUNT_CAP } from "@starterkit/shared/spaces";
 import { formatNumber } from "@starterkit/ui/lib/format";
 
 export type NavIcon = "dashboard" | "users" | "roles" | "permissions" | "activity" | "signin" | "ds" | "profile" | "projects" | "members"
-  | "today" | "breaks" | "approvals" | "recons" | "sources" | "workflows" | "integrations" | "posting" | "results" | "inbox" | "reports";
-export type NavGroup = "main" | "work" | "setup" | "space" | "access" | "audit" | "personal";
+  | "today" | "breaks" | "approvals" | "recons" | "sources" | "workflows" | "integrations" | "posting" | "results" | "inbox" | "reports"
+  | "monitoring" | "feeds";
+export type NavGroup = "main" | "work" | "setup" | "import" | "space" | "access" | "audit" | "personal";
 /** Why a `soon` item is off, as the 64 px rail's tooltip (the group caption says it elsewhere; AGENTS.md §10). */
 export const SOON_REASON = "Arrives in a later release.";
 /**
@@ -48,6 +49,9 @@ export const NAV: readonly NavItem[] = [
   { href: "/recons", label: "Recons", icon: "recons", shortcut: "G C", group: "setup", perm: null, space: "recons" },
   { href: "/sources", label: "Sources", icon: "sources", shortcut: "G O", group: "setup", perm: null, space: "sources" },
   { href: "/inbox", label: "Inbox files", icon: "inbox", shortcut: "G B", group: "setup", perm: null, space: "inbox" },
+  // The Import section (DEC-066): global, its own group under Setup; Monitoring first (late data and stuck schedulers)
+  { href: "/imports", label: "Monitoring", icon: "monitoring", shortcut: "G G", group: "import", perm: "import.view" },
+  { href: "/imports/feeds", label: "Feeds", icon: "feeds", shortcut: "G F", group: "import", perm: "import.view" },
   { href: "/projects", label: "Projects", icon: "projects", shortcut: "", group: "main", perm: "project.view", hidden: true },
   { href: "/spaces", label: "Members", icon: "members", shortcut: "G E", group: "space", perm: null, space: "members" },
   { href: "/workflows", label: "Workflows", icon: "workflows", shortcut: "G W", group: "space", perm: null, space: "workflows" },
@@ -66,7 +70,7 @@ export const NAV: readonly NavItem[] = [
 ];
 
 const GROUPS: { id: NavGroup; label: string }[] = [
-  { id: "main", label: "Main" }, { id: "work", label: "Work" }, { id: "setup", label: "Setup" }, { id: "space", label: "Space" }, { id: "access", label: "Access" }, { id: "audit", label: "Audit" }, { id: "personal", label: "Personal" },
+  { id: "main", label: "Main" }, { id: "work", label: "Work" }, { id: "setup", label: "Setup" }, { id: "import", label: "Import" }, { id: "space", label: "Space" }, { id: "access", label: "Access" }, { id: "audit", label: "Audit" }, { id: "personal", label: "Personal" },
 ];
 
 /**
@@ -142,6 +146,11 @@ export function centerScrollTop(c: { scrollTop: number; clientHeight: number; sc
   const top = item.offsetTop + item.offsetHeight / 2 - c.clientHeight / 2;
   return Math.round(Math.max(0, Math.min(top, c.scrollHeight - c.clientHeight)));
 }
+/** The Monitoring item's badge (GET /api/imports/issues): open import issues, a failure (down); null until read. */
+export function importsNavCount(href: string, issues: number | undefined): NavCount | null {
+  if (href !== "/imports" || issues === undefined) return null;
+  return { value: issues, text: countText(issues), name: issues ? `${formatNumber(issues)} need attention` : "", tone: "down" };
+}
 /** A count badge's text: the number, "99+" past 99 (a frame of the roll may be fractional: rounded). */
 export const countText = (v: number) => (v > 99 ? "99+" : String(Math.round(v)));
 /** A nav link's accessible name: its label, then its count ("Unmatch, 37 open"). */
@@ -208,5 +217,6 @@ export function pagePerm(pathname: string): PermissionName | null {
   if (/^\/users\/[^/]+\/edit$/.test(p)) return "user.edit";
   if (p === "/projects/new") return "project.create";
   if (/^\/projects\/[^/]+\/edit$/.test(p)) return "project.edit";
+  if (p === "/imports/feeds/new") return "import.manage";
   return navItemOf(p)?.perm ?? null;
 }

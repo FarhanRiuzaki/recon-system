@@ -7,6 +7,7 @@ import { BREAK_SHAPE, BREAKS_SHAPE } from "@/features/breaks/shapes";
 import { INBOX_SHAPE } from "@/features/inbox/shapes";
 import { REPORT_DESIGNER_SHAPE, REPORT_FILES_SHAPE, REPORT_TEMPLATE_SHAPE, REPORT_TEMPLATES_SHAPE } from "@/features/reports/shapes";
 import { RESULTS_SHAPE } from "@/features/results/shapes";
+import { FEED_FORM_SHAPE, FEEDS_SHAPE } from "@/features/imports/shapes";
 import type { Section } from "./route-skeleton";
 
 /**
@@ -36,6 +37,9 @@ export const ROUTE_SHAPES: Record<string, readonly Section[]> = {
   "/spaces/[spaceId]/workflows/[id]": LIBRARY_EDITOR_SHAPE,
   "/integrations": CONNECTORS_SHAPE,
   "/integrations/calls": CALLS_SHAPE,
+  "/imports/feeds": FEEDS_SHAPE,
+  "/imports/feeds/new": FEED_FORM_SHAPE,
+  "/imports/feeds/[feedId]": FEED_FORM_SHAPE,
   "/spaces/[spaceId]/posting": POSTING_SHAPE,
   "/spaces/[spaceId]/results": RESULTS_SHAPE,
   "/spaces/[spaceId]/inbox": INBOX_SHAPE,

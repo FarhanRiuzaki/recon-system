@@ -8,11 +8,11 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { type ReactNode, useCallback } from "react";
 import { useAuth } from "@/lib/client/auth-context";
-import { activeChild, navCount, navFor, navLinkName, onItem } from "@/lib/shared/nav";
+import { activeChild, importsNavCount, navCount, navFor, navLinkName, onItem } from "@/lib/shared/nav";
 import { NavGlyph } from "./nav-icon";
 import { AccountMenu } from "./account-menu";
 import { SoonCaption, SoonItem } from "./soon-item";
-import { centerCurrent, NavCountBadge, useNavCounts, useNavHref, useNoSpace } from "./sidebar";
+import { centerCurrent, NavCountBadge, useImportIssues, useNavCounts, useNavHref, useNoSpace } from "./sidebar";
 
 const ICON_BUTTON = "inline-grid size-8 shrink-0 cursor-pointer place-items-center rounded-md text-fg-2 hover:bg-tray hover:text-fg";
 
@@ -30,6 +30,7 @@ export function MobileNav({ wordmark, space }: { wordmark: ReactNode; space?: Re
   const navHref = useNavHref();
   const noSpace = useNoSpace();
   const counts = useNavCounts();
+  const issues = useImportIssues();
   // a stable ref: it runs once as the drawer's list mounts (the drawer opens), not on every re-render
   const centerOnOpen = useCallback((el: HTMLElement | null) => centerCurrent(el, false), []);
   return (
@@ -57,7 +58,7 @@ export function MobileNav({ wordmark, space }: { wordmark: ReactNode; space?: Re
                 if (n.soon) return <SoonItem key={n.href} item={n} captionId={`drawer-soon-${s.id}`} drawer />;
                 const active = onItem(path, n);
                 const child = active ? activeChild(n, path, sp) : null;
-                const count = navCount(n.space, counts);
+                const count = navCount(n.space, counts) ?? importsNavCount(n.href, issues);
                 return (
                   <div key={n.href} className="grid gap-0.5">
                   <DrawerClose asChild>

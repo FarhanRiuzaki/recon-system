@@ -8,7 +8,7 @@ import { isTimeExpression, resolveTimeRange } from "@starterkit/ui/lib/time-rang
 import { ACTIVITY_ID_PATTERN } from "@starterkit/shared/audit-investigation";
 import { ACTION_OPTIONS, ACTIVITY_SORTS, AUDIT_RANGES, AUTH_LOG_SORTS, presetRange, rangeProblem } from "@starterkit/shared/audit";
 import { appDate } from "@starterkit/ui/lib/format";
-import { ACTION_RUN_SORTS, CALL_SORTS, CONNECTOR_SORTS, PERMISSION_SORTS, POSTING_GROUP_SORTS, PROJECT_SORTS, ROLE_SORTS, SOURCE_SORTS, SOURCE_VERSION_SORTS, SPACE_MEMBER_SORTS, SESSION_SORTS, USER_SORTS, INBOX_FILE_SORTS, REPORT_FILE_SORTS, REPORT_TEMPLATE_SORTS } from "@starterkit/shared/paging";
+import { ACTION_RUN_SORTS, CALL_SORTS, CONNECTOR_SORTS, IMPORT_FEED_SORTS, PERMISSION_SORTS, POSTING_GROUP_SORTS, PROJECT_SORTS, ROLE_SORTS, SOURCE_SORTS, SOURCE_VERSION_SORTS, SPACE_MEMBER_SORTS, SESSION_SORTS, USER_SORTS, INBOX_FILE_SORTS, REPORT_FILE_SORTS, REPORT_TEMPLATE_SORTS } from "@starterkit/shared/paging";
 import { SOURCE_STATE_FILTERS, type SourceStateFilter } from "@starterkit/shared/sources";
 import { MODULES } from "@starterkit/shared/permissions";
 import { selectionState } from "@starterkit/shared/filter-selection";
@@ -102,6 +102,20 @@ export const PROJECTS: TableDef<ProjectFilters> = {
   spec: { sorts: PROJECT_SORTS, defaultSort: "name", search: ["q"], filters: { q: text(200), status: multiChoice() } },
 };
 export const projectDetail = (id: string) => ({ key: [...PROJECTS_KEY, "detail", id] as const, url: `/api/projects/${encodeURIComponent(id)}` });
+
+// The Import section (DEC-066): module `imports`.
+export const IMPORTS_KEY = ["imports"] as const;
+/** Monitoring: every feed's scheduler and its last 14 MIS dates (the newest = yesterday, WIB). */
+export const importMonitor = { key: [...IMPORTS_KEY, "monitor"] as const, url: "/api/imports/monitor" };
+/** The Monitoring badge. */
+export const importIssues = { key: [...IMPORTS_KEY, "issues"] as const, url: "/api/imports/issues" };
+export type ImportFeedFilters = { q: string };
+export const IMPORT_FEEDS: TableDef<ImportFeedFilters> = {
+  key: IMPORTS_KEY[0], path: "/api/imports/feeds",
+  spec: { sorts: IMPORT_FEED_SORTS, defaultSort: "name", search: ["q"], filters: { q: text(200) } },
+};
+export const importFeed = (id: string) => ({ key: [...IMPORTS_KEY, "feed", id] as const, url: `/api/imports/feeds/${encodeURIComponent(id)}` });
+export const importDate = (id: string, date: string) => ({ key: [...IMPORTS_KEY, "date", id, date] as const, url: `/api/imports/feeds/${encodeURIComponent(id)}/dates/${encodeURIComponent(date)}` });
 
 export const SPACES_KEY = ["spaces"] as const;
 /** The switcher's list: all the caller's spaces, not the URL state of any table. */

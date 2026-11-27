@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import type { z } from "zod";
 import { Hydrate } from "@/lib/client/hydrate";
 import { ApprovalListQuery } from "@starterkit/shared/contracts/approvals";
+import { ImportFeedListQuery } from "@starterkit/shared/contracts/imports";
 import { InboxFileListQuery } from "@starterkit/shared/contracts/inbox";
 import { CallListQuery, ConnectorListQuery, PostingGroupListQuery } from "@starterkit/shared/contracts/integrations";
 import { ActionRunListQuery } from "@starterkit/shared/contracts/breaks";
@@ -21,7 +22,7 @@ import { ReportFileListQuery, ReportTemplateListQuery } from "@starterkit/shared
 import { SpaceMemberListQuery } from "@starterkit/shared/contracts/spaces";
 import { PermissionListQuery, RoleListQuery } from "@starterkit/shared/contracts/rbac";
 import { UserListQuery } from "@starterkit/shared/contracts/users";
-import { ACTION_RUNS, ACTIVITY, AUTH_LOG, activityEntry, CONNECTOR_CALLS, CONNECTOR_OPTIONS, connectorDetail, CONNECTORS, dashboardRead, ME_KEY, reconDashboardRead, MY_DEVICES, MY_SESSIONS, PERMISSIONS_TABLE, POSTING_GROUPS, postingGroup, projectDetail, PROJECTS, SPACE_MEMBERS, spaceDetail, spaceOptions, roleKey, roleOptions, roleUrl, ROLES, SUPERADMINS, sideSourceOptions, sourceActivity, sourceDetail, sourceFiles, sourcePullsFirst, sourceQuarantine, sourceRecords, SOURCES, sourceSnapshots, sourceSummary, sourceVersion, sourceVersions, type TableDef, userDetail as userDetailQuery, userDevices as userDevicesQuery, USERS, userSessions as userSessionsTable, userSpaces as userSpacesQuery, INBOX_FILES, inboxFolders, REPORT_FILES, REPORT_TEMPLATES, reportTemplate, reportVersions } from "@/lib/shared/queries";
+import { ACTION_RUNS, ACTIVITY, AUTH_LOG, activityEntry, CONNECTOR_CALLS, CONNECTOR_OPTIONS, connectorDetail, CONNECTORS, dashboardRead, ME_KEY, reconDashboardRead, MY_DEVICES, MY_SESSIONS, PERMISSIONS_TABLE, POSTING_GROUPS, postingGroup, projectDetail, PROJECTS, SPACE_MEMBERS, spaceDetail, spaceOptions, roleKey, roleOptions, roleUrl, ROLES, SUPERADMINS, sideSourceOptions, sourceActivity, sourceDetail, sourceFiles, sourcePullsFirst, sourceQuarantine, sourceRecords, SOURCES, sourceSnapshots, sourceSummary, sourceVersion, sourceVersions, type TableDef, userDetail as userDetailQuery, userDevices as userDevicesQuery, USERS, userSessions as userSessionsTable, userSpaces as userSpacesQuery, INBOX_FILES, inboxFolders, IMPORT_FEEDS, importFeed, importMonitor, REPORT_FILES, REPORT_TEMPLATES, reportTemplate, reportVersions } from "@/lib/shared/queries";
 import { APPROVALS, BREAKS, breakActivity, breakSummaryUrl, myApprovals, reconOpenSummary, reconReasons, breakCandidates, breakDetail, draftSimulations, reconActivity, reconDetail, reconRun, reconLastTick, reconLive, reconRunItems, reconRunsFirst, reconSignoffs, reconTrend, RECONS, spaceWorkflow, WORKFLOWS, reconVersion, reconVersions, spaceToday, RESULTS, resultColumns, resultCountsUrl, reconOptions } from "@/lib/shared/queries-recon";
 import { facetsRequest, readTable, tableRequest } from "@/lib/shared/table-state";
 import { backendJson, v1Path } from "./backend";
@@ -83,6 +84,9 @@ export const reads = {
   authLog: (sp: URLSearchParams) => table(AUTH_LOG, sp, AuthLogQuery),
   projects: (sp: URLSearchParams) => table(PROJECTS, sp, ProjectListQuery),
   project: (id: string): Read => ({ key: projectDetail(id).key, path: projectDetail(id).url }),
+  importMonitor: (): Read => ({ key: importMonitor.key, path: importMonitor.url }),
+  importFeeds: (sp: URLSearchParams) => table(IMPORT_FEEDS, sp, ImportFeedListQuery),
+  importFeed: (id: string): Read => ({ key: importFeed(id).key, path: importFeed(id).url }),
   spaceOptions: (): Read => ({ key: spaceOptions().key, path: spaceOptions().url }),
   space: (id: string): Read => ({ key: spaceDetail(id).key, path: spaceDetail(id).url }),
   spaceMembers: (id: string, sp: URLSearchParams) => table(SPACE_MEMBERS(id), sp, SpaceMemberListQuery),
