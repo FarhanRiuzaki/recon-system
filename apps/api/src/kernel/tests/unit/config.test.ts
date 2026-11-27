@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { CONFIG_KEYS, loadConfig, loadDbConfig, loadJobsConfig, loadWorkerConfig } from "../../config";
+import { CONFIG_KEYS, loadConfig, loadDbConfig, loadJobsConfig, loadStagingConfig, loadWorkerConfig } from "../../config";
 
 const KEY = Buffer.alloc(32, 7).toString("base64");
 const base = {
@@ -28,6 +28,17 @@ describe("loadConfig", () => {
       DB_POOL_MAX: 10, SESSION_TTL_HOURS: 12, SESSION_IDLE_MINUTES: 120, APP_URL: "http://localhost:3000",
       MAIL_TRANSPORT: "log", AUDIT_RETENTION_DAYS: 365, LOG_LEVEL: "info", OAUTH_MOCK: false, LDAP_MOCK: false,
     });
+  });
+
+  it("the staging database (DEC-066): optional, import-host's schema and history table by default, a bad value named by key only", () => {
+    expect(loadConfig(base)).toMatchObject({ STAGING_SCHEMA: "public", STAGING_HISTORY_TABLE: "import_file_history", STAGING_POOL_MAX: 2 });
+    expect(loadConfig(base).STAGING_DATABASE_URL).toBeUndefined();
+    expect(loadConfig(base).STAGING_READONLY_ROLE).toBeUndefined();
+    const msg = failure({ ...base, STAGING_DATABASE_URL: "mysql://u:hunter2-stg@h/db", STAGING_SCHEMA: "Public; drop", STAGING_READONLY_ROLE: "read only" });
+    for (const k of ["STAGING_DATABASE_URL", "STAGING_SCHEMA", "STAGING_READONLY_ROLE"]) expect(msg).toContain(k);
+    expect(msg).not.toContain("hunter2-stg");
+    expect(loadStagingConfig({ STAGING_DATABASE_URL: "postgres://u:p@h:5432/recon_engine_import", STAGING_READONLY_ROLE: "readonly" }))
+      .toMatchObject({ STAGING_SCHEMA: "public", STAGING_READONLY_ROLE: "readonly", JOB_STATEMENT_TIMEOUT_MS: 120_000 });
   });
 
   it("rejects a missing DATABASE_URL and names the key only", () => {

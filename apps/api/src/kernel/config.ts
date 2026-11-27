@@ -47,6 +47,16 @@ const Fields = z.object({
   /** The report generator (DEC-060): how long a made file is kept, and the Chromium that prints PDFs (the worker image's). */
   REPORT_RETENTION_DAYS: int(1, 3650, 400),
   REPORT_CHROMIUM_PATH: z.string().min(1).default("/usr/bin/chromium"),
+  /**
+   * The Import section's staging database (DEC-066): where the stg_* tables and import_file_history live. Unset = the
+   * Import routes that touch staging answer 409. STAGING_READONLY_ROLE: granted SELECT on a table the screen creates
+   * (unset = no grant).
+   */
+  STAGING_DATABASE_URL: z.string().regex(/^postgres(ql)?:\/\/\S+$/, { message: "must be a postgres:// URL" }).optional(),
+  STAGING_SCHEMA: z.string().regex(/^[a-z_][a-z0-9_]{0,62}$/, { message: "must be a lower case SQL identifier" }).default("public"),
+  STAGING_HISTORY_TABLE: z.string().regex(/^[a-z_][a-z0-9_]{0,62}$/, { message: "must be a lower case SQL identifier" }).default("import_file_history"),
+  STAGING_READONLY_ROLE: z.string().regex(/^[a-z_][a-z0-9_]{0,62}$/, { message: "must be a lower case SQL identifier" }).optional(),
+  STAGING_POOL_MAX: int(1, 20, 2),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
   OAUTH_MOCK: flag,
   LDAP_MOCK: flag,
@@ -97,6 +107,12 @@ const JobsFields = Fields.pick({ DATABASE_URL: true, JOBS_POOL_MAX: true });
 const WorkerFields = Fields.pick({
   DATABASE_URL: true, JOBS_POOL_MAX: true, API_HOST: true, WORKER_DB_POOL_MAX: true, JOB_STATEMENT_TIMEOUT_MS: true, WORKER_HEALTH_PORT: true,
   DATA_ENCRYPTION_KEY: true, INBOX_ROOTS: true, EXCEL_MAX_MB: true, REPORT_RETENTION_DAYS: true, REPORT_CHROMIUM_PATH: true,
+  STAGING_DATABASE_URL: true, STAGING_SCHEMA: true, STAGING_HISTORY_TABLE: true, STAGING_READONLY_ROLE: true, STAGING_POOL_MAX: true,
+});
+/** What the staging pool needs (modules/imports/staging/pool.ts opens it on first use, in the API or the worker). */
+const StagingFields = Fields.pick({
+  STAGING_DATABASE_URL: true, STAGING_SCHEMA: true, STAGING_HISTORY_TABLE: true, STAGING_READONLY_ROLE: true, STAGING_POOL_MAX: true,
+  JOB_STATEMENT_TIMEOUT_MS: true,
 });
 /** The key of encryptSecret/decryptSecret (kernel/crypto.ts), read alone so the worker decrypts without the API's secrets. */
 const KeyFields = Fields.pick({ DATA_ENCRYPTION_KEY: true });
@@ -181,6 +197,11 @@ export function loadDbConfig(env: Record<string, string | undefined>): z.output<
 /** Only DATABASE_URL and JOBS_POOL_MAX (pg-boss's pool), validated the same way. */
 export function loadJobsConfig(env: Record<string, string | undefined>): z.output<typeof JobsFields> {
   return loadPicked(JobsFields, env);
+}
+
+/** Only the staging keys (StagingFields), validated the same way. */
+export function loadStagingConfig(env: Record<string, string | undefined>): z.output<typeof StagingFields> {
+  return loadPicked(StagingFields, env);
 }
 
 /** Only the keys the worker process reads (WorkerFields), validated the same way. */

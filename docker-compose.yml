@@ -102,6 +102,12 @@ services:
       # The file reader: the largest Excel workbook, in MB (1 to 128, default 50); the worker has the same.
       EXCEL_MAX_MB: ${EXCEL_MAX_MB:-}
       REPORT_RETENTION_DAYS: ${REPORT_RETENTION_DAYS:-}
+      # The Import section's staging database (DEC-066); empty = not set up. Same values in the api and the worker.
+      STAGING_DATABASE_URL: ${STAGING_DATABASE_URL:-}
+      STAGING_SCHEMA: ${STAGING_SCHEMA:-}
+      STAGING_HISTORY_TABLE: ${STAGING_HISTORY_TABLE:-}
+      STAGING_READONLY_ROLE: ${STAGING_READONLY_ROLE:-}
+      STAGING_POOL_MAX: ${STAGING_POOL_MAX:-}
     # Read-write here (Inbox files uploads land in <first INBOX_ROOTS entry>/<space code>/<folder>/); the worker keeps :ro.
     volumes:
       - ${INBOX_DIR:-./inbox}:/data/inbox
@@ -132,6 +138,12 @@ services:
       REPORT_RETENTION_DAYS: ${REPORT_RETENTION_DAYS:-}
       JOB_STATEMENT_TIMEOUT_MS: ${JOB_STATEMENT_TIMEOUT_MS:-}
       JOBS_POOL_MAX: ${JOBS_POOL_MAX:-}
+      # The Import section's staging database (DEC-066); empty = not set up. Same values in the api and the worker.
+      STAGING_DATABASE_URL: ${STAGING_DATABASE_URL:-}
+      STAGING_SCHEMA: ${STAGING_SCHEMA:-}
+      STAGING_HISTORY_TABLE: ${STAGING_HISTORY_TABLE:-}
+      STAGING_READONLY_ROLE: ${STAGING_READONLY_ROLE:-}
+      STAGING_POOL_MAX: ${STAGING_POOL_MAX:-}
     volumes:
       - ${INBOX_DIR:-./inbox}:/data/inbox:ro
     extra_hosts:

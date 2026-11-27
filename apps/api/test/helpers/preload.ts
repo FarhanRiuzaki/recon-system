@@ -3,6 +3,7 @@
 import { mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { stagingUrl } from "./staging-url";
 import { testDatabaseUrl } from "./test-url";
 
 const url = testDatabaseUrl(process.env);
@@ -20,6 +21,11 @@ Object.assign(process.env, {
   MAIL_TRANSPORT: "log",
   LOG_LEVEL: process.env.TEST_LOG_LEVEL ?? "silent",
   INBOX_ROOTS: inbox,
+  // The Import section's staging database: <test database>_staging, schema imports_staging (test/helpers/staging.ts).
+  STAGING_DATABASE_URL: stagingUrl(url),
+  STAGING_SCHEMA: "imports_staging",
+  STAGING_HISTORY_TABLE: "import_file_history",
+  STAGING_READONLY_ROLE: "",
 });
 
 // After the env above: the logger reads LOG_LEVEL when it loads.
@@ -27,5 +33,7 @@ const { createDatabase, migrate, migrateJobs } = await import("../../src/db/migr
 await createDatabase(url);
 await migrate();
 await migrateJobs();
+const { prepareStaging } = await import("./staging");
+await prepareStaging(process.env.STAGING_DATABASE_URL!);
 
 export {};
