@@ -23,6 +23,7 @@ export const QUEUES = {
   reconStats: "recon.stats",
   integrationsAction: "integrations.action",
   reportsMake: "reports.make",
+  importsBeat: "imports.beat",
 } as const;
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
 
@@ -31,6 +32,7 @@ export const CONCURRENCY: Record<QueueName, number> = {
   "ingest.pull": 4, "ingest.file": 2, "ingest.snapshot": 2, "maintenance.partitions": 1, "recon.schedule": 1, "recon.tick": 4, "recon.daily": 2, "recon.heavy": 1, "breaks.sla": 1, "recon.stats": 2, "integrations.action": 4,
   // one report at a time per worker: a PDF launches Chromium (DEC-060; tibsdev: at most 2 heavy jobs)
   "reports.make": 1,
+  "imports.beat": 1,
 };
 
 /**
@@ -58,6 +60,8 @@ export const QUEUE_OPTIONS: Record<QueueName, QueueOptions> = {
   "integrations.action": { heartbeatSeconds: 30, expireInSeconds: 300, retryLimit: 0 },
   // a file of up to 92 days of results (DEC-060); retried twice, the file row keeps one result
   "reports.make": { heartbeatSeconds: 30, expireInSeconds: 3600, retryLimit: 2 },
+  // the Import section's worker minute: one upsert; a missed one is not worth a retry, the next minute writes again
+  "imports.beat": { heartbeatSeconds: 30, expireInSeconds: 60, retryLimit: 0 },
 };
 
 /** The cron time zone of every schedule. */

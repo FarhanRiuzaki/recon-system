@@ -28,6 +28,8 @@ export const START_GRACE_MINUTES = 10;
 export const HEARTBEAT_STALE_SECONDS = 120;
 /** A PROCESSING history row older than this is a lock left behind (import-host's PROCESSING_TIMEOUT_MINUTES). */
 export const LOCK_STALE_MINUTES = 60;
+/** How a failed check's message starts when the source database couldn't be reached (Monitoring: Connection failing). */
+export const CONNECTION_FAILED = "Connection failed:";
 
 /** A feed's MIS date in the monitor. */
 export const DATE_STATES = ["waiting", "not_ready", "imported", "late", "missing", "failed", "rerun"] as const;

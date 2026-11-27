@@ -5,7 +5,7 @@ import { closeJobs, enqueue, QUEUES, scheduleEvery, startWorker, unschedule, wor
 import { log } from "./kernel/log";
 import { workerClient, workerDb } from "./kernel/worker-db";
 import { engineHandlers, queueBackfill } from "./modules/engine";
-import { closeStaging } from "./modules/imports";
+import { closeStaging, importsHandlers } from "./modules/imports";
 import { ingestHandlers } from "./modules/ingest";
 import { callsLogged, integrationsHandlers } from "./modules/integrations";
 import { reportsHandlers } from "./modules/reports";
@@ -13,7 +13,7 @@ import { reportsHandlers } from "./modules/reports";
 const { API_HOST, WORKER_HEALTH_PORT } = loadWorkerConfig(process.env);
 
 /** The job handlers, on the worker's pool (DEC-036): ingest (Plan 2), recon runs and simulations (Plan 3), approval actions (stage 4). */
-const HANDLERS = { ...ingestHandlers(workerDb), ...engineHandlers(workerDb), ...integrationsHandlers(workerDb), ...reportsHandlers(workerDb) };
+const HANDLERS = { ...ingestHandlers(workerDb), ...engineHandlers(workerDb), ...integrationsHandlers(workerDb), ...reportsHandlers(workerDb), ...importsHandlers(workerDb) };
 
 const stopWorker = await startWorker(HANDLERS);
 // Partitions daily at 00:10 Asia/Jakarta, and once now: a fresh install has none, and ingest makes one only as a fallback.
@@ -31,6 +31,8 @@ await queueBackfill();
 await scheduleEvery(QUEUES.integrationsAction, "sweep", "* * * * *", { sweep: true });
 // posting groups whose cutoff has passed are closed and their one run queued (stage 5)
 await scheduleEvery(QUEUES.integrationsAction, "groups", "* * * * *", { groups: true });
+// the Import section's worker minute (Monitoring tells a stopped worker or a stuck cron from it, DEC-066)
+await scheduleEvery(QUEUES.importsBeat, "beat", "* * * * *", {});
 // 200 while the queue loops are alive (fetched within 60 s or holding a job), else 503; anything else 404.
 const server = Bun.serve({
   hostname: API_HOST,

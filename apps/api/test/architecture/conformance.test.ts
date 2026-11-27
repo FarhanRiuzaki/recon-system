@@ -261,6 +261,8 @@ const NON_LIST_GETS: Record<string, string> = {
   "GET /v1/spaces/:spaceId/breaks/summary": "four numbers of the unmatch queue; its amounts one per currency",
   "GET /v1/spaces/:spaceId/connector-operations": "the connectors a recon may pick, their published versions and operations: bounded (connectors are few, 50 operations each)",
   "GET /v1/spaces/:spaceId/sources/:sourceId/connection/columns": "the columns of one table of a source database: bounded by the engine's column limit",
+  "GET /v1/imports/monitor": "every import feed (few) by MONITOR_DAYS (14) MIS dates, fixed",
+  "GET /v1/imports/issues": "one count for the Monitoring badge",
 };
 const ONE_RECORD = /\/:\w+$/;
 /** A list's filter counts (FacetsDto: per filter, per value; bounded by the filter's values), beside the list it counts. */

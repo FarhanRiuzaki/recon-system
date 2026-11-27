@@ -14,6 +14,8 @@ export const importFeeds = pgTable("import_feeds", {
   /** ImportFeedSpec (contracts/imports.ts); may be incomplete while the scheduler is off. */
   spec: jsonb("spec").notNull(),
   schedulerOn: boolean("scheduler_on").notNull().default(false),
+  /** When the scheduler was last turned on or off: a run time before it can't be missed. */
+  schedulerChangedAt: timestamp("scheduler_changed_at", { withTimezone: true }),
   /** Whether the target table was created from the screen or an existing one adopted. */
   tableState: text("table_state").notNull().default("missing"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -48,6 +50,15 @@ export const importRuns = pgTable("import_runs", {
   check("import_runs_trigger_check", sql`${t.trigger} in ('schedule', 'manual')`),
   check("import_runs_status_check", sql`${t.status} in ('running', 'done', 'failed', 'crashed')`),
 ]);
+
+/**
+ * The worker's minute (queue imports.beat, a pg-boss cron): one row, `at` written every minute while a worker runs and
+ * pg-boss's cron fires. An old `at` = no worker, or its scheduling is stuck: no feed's run can start either.
+ */
+export const importHeartbeat = pgTable("import_heartbeat", {
+  key: text("key").primaryKey(),
+  at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+});
 
 /** One look at one MIS date of a feed: NOT READY included, which import_file_history never records. */
 export const importChecks = pgTable("import_checks", {

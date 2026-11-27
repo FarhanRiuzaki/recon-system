@@ -187,7 +187,7 @@ export async function seedDemo(db: Tx, env: Record<string, string | undefined> =
     // Import section (DEC-066): two host feeds entered for Monitoring only (scheduler off, no staging needed to list them)
     await tx.insert(importFeeds).values([["Demo KAI host", "DEMO_KAI_TLHIST"], ["Demo Garuda host", "DEMO_GARUDA_TLHIST"]].map(([name, historySource]) => ({
       id: Bun.randomUUIDv7(), name: name!,
-      spec: { kind: "db_host", historySource, batchPrefix: "HISTORY_TLHIST", startDate: "2026-10-31", due: { time: "06:00", graceMinutes: 30 } },
+      spec: { kind: "db_host", historySource, batchPrefix: "HISTORY_TLHIST", startDate: "2026-10-31", due: { time: "06:30", graceMinutes: 30 } },
     })));
     await seedDemoSources(tx, { treasury: spaceIds.treasury, ctop: spaceIds.ctop, maker: fixed("viewer"), checker: fixed("juli.13"), now });
     await tx.insert(activityTable).values(activity);

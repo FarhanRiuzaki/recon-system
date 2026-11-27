@@ -212,7 +212,7 @@ date-grid.tsx,date-dialog.tsx,runs-table.tsx,issues-notice.tsx,feeds-page.tsx,fe
   `bun run --filter @starterkit/web test` → commit `feat(web): import monitoring and feeds`.
 
 **Part A done:** the owner enters KAI_TLHIST, INDOVISION_TLHIST, GARUDA_TLHIST (batch prefix `HISTORY_TLHIST`, start
-2026-10-31, due 06:00 + 30) and watches them. Run `bun run check` and the Part A E2E (Task 16's lists for these pages)
+2026-10-31, due 06:30 + 30) and watches them. Run `bun run check` and the Part A E2E (Task 16's lists for these pages)
 before going on.
 
 # Part B — The engine
@@ -348,7 +348,7 @@ feed-monitor-tab,history-table}.tsx`, Monitoring actions (`Run now`, `Release st
 
 **Files:** `packages/shared/src/imports.ts` (`HOST_BILLER_TEMPLATE`: the 20 DWH columns, the query with `<host codes>`,
 `<dwh codes>`, `<provider>`, the 21 `stg_kai_host` columns with types and checks, dedupe `date`, `upper(btrim(ref_id))`,
-`amount`, `ref_number`, the CEL mapping, code rules, 06:30/08:30, max 30 min, due 06:00 + 30),
+`amount`, `ref_number`, the CEL mapping, code rules, 06:30/08:30, max 30 min, due 06:30 + 30),
 `apps/api/scripts/imports-compare.ts`
 
 - Template tests: KAI's generated query equals spec §4.3; the table equals `create_stg_kai_host.sql`.

@@ -213,7 +213,7 @@ turns it on (§10). Off = no scheduled run; manual actions still work.
 | Dates to keep complete | from the feed's start date to yesterday |
 | What a run takes | history-driven: every date in range without a current row (never run, NOT READY, released), plus RERUN, plus a stale PROCESSING; IMPORTED dates are not read again; FAILED dates wait for a person |
 | Revision policy | host: none automatic (IMPORTED is final until Rerun). Biller later: a changed file is a revision only on the same day as the imported version, ignored after |
-| Due time | 06:00 for host (DWH is loaded before 05:45), plus grace in minutes |
+| Due time | 06:30 for host (the run time: the DWH is loaded before 05:45, the 06:30 run takes seconds), plus grace in minutes (30): a date imported by 07:00 WIB is on time |
 | Scheduler | on / off; a new feed starts off |
 
 ## 7. Permissions and navigation
@@ -244,7 +244,7 @@ States (feeds × the last 14 dates, scrolls inside its card; `StatusChip` + the 
 | Failed | FAILED; its error | down |
 | Rerun | set to RERUN, waiting for the next run | progress |
 
-Due time of MIS date D = D + 1 day at the feed's due time + grace (host: 06:00 + 30 min). Late = the first IMPORTED
+Due time of MIS date D = D + 1 day at the feed's due time + grace (host: 06:30 + 30 min = 07:00 WIB; a due time at the run time itself would make every 06:30 import late by seconds). Late = the first IMPORTED
 `finished_at` past it. These states come from `import_file_history`, whoever wrote it, so they work for import-host's
 feeds today (§10).
 
