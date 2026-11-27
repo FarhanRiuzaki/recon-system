@@ -4,6 +4,8 @@
   /* next/font variables from app/fonts.ts, set on <html> by both root layouts (layout.tsx, global-error.tsx). */
   --font-sans: var(--font-inter), "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: var(--font-geist-mono), "Geist Mono Variable", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  /* the product name beside the logo (sign-in pages) */
+  --font-brand: var(--font-jakarta), "Plus Jakarta Sans Variable", var(--font-inter), ui-sans-serif, system-ui, sans-serif;
 
   /* v3 surfaces, lines, ink */
   --color-bg: var(--bg);

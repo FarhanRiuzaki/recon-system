@@ -27,5 +27,19 @@ export const geistMono = localFont({
   adjustFontFallback: false,
 });
 
-/** Classes for <html>: expose the font variables to the token layer (globals.css → --font-sans / --font-mono). */
-export const fontVariables = `${inter.variable} ${geistMono.variable}`;
+/**
+ * The product name beside the logo on the sign-in pages only (`font-brand`): a geometric sans made for Jakarta, firm
+ * like the logo's lettering. Not preloaded, so other pages never fetch it; the name swaps in from the fallback.
+ */
+export const jakarta = localFont({
+  src: "../../node_modules/@fontsource-variable/plus-jakarta-sans/files/plus-jakarta-sans-latin-wght-normal.woff2",
+  weight: "200 800",
+  style: "normal",
+  display: "swap",
+  preload: false,
+  variable: "--font-jakarta",
+  fallback: ["ui-sans-serif", "system-ui", "-apple-system", "Segoe UI", "Helvetica Neue", "Arial", "sans-serif"],
+});
+
+/** Classes for <html>: expose the font variables to the token layer (globals.css → --font-sans / --font-mono / --font-brand). */
+export const fontVariables = `${inter.variable} ${geistMono.variable} ${jakarta.variable}`;
