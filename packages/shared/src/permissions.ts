@@ -1,6 +1,6 @@
 export type Action = "view" | "create" | "edit" | "delete" | "manage" | "debug";
 
-export const MODULES: { key: "user" | "role" | "permission" | "audit" | "project" | "space" | "workflow" | "integration"; actions: Action[] }[] = [
+export const MODULES: { key: "user" | "role" | "permission" | "audit" | "project" | "space" | "workflow" | "integration" | "import"; actions: Action[] }[] = [
   { key: "user", actions: ["view", "create", "edit", "delete"] },
   { key: "role", actions: ["view", "create", "edit", "delete"] },
   { key: "permission", actions: ["view", "create"] },
@@ -15,6 +15,11 @@ export const MODULES: { key: "user" | "role" | "permission" | "audit" | "project
    * them and their credentials (DEC-053); `integration.debug` reads a logged call's full request and response.
    */
   { key: "integration", actions: ["view", "manage", "debug"] },
+  /**
+   * `import.view` opens the Import section: monitoring, feeds, history, previews; `import.manage` changes feeds, the host
+   * connection and staging tables and starts runs (DEC-066).
+   */
+  { key: "import", actions: ["view", "manage"] },
 ];
 
 export type PermissionName =
@@ -25,7 +30,8 @@ export type PermissionName =
   | "project.view" | "project.create" | "project.edit" | "project.delete"
   | "space.view" | "space.manage"
   | "workflow.view" | "workflow.manage"
-  | "integration.view" | "integration.manage" | "integration.debug";
+  | "integration.view" | "integration.manage" | "integration.debug"
+  | "import.view" | "import.manage";
 
 /** A permission name: `<module>.<action>`, an action of lowercase letters, digits or underscores (the module is checked against MODULES separately). */
 export const PERMISSION_KEY = /^[a-z]+\.[a-z][a-z0-9_]{0,31}$/;

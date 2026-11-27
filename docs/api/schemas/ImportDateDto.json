@@ -1,0 +1,289 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ImportDateDto",
+  "type": "object",
+  "properties": {
+    "date": {
+      "type": "string"
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "waiting",
+        "not_ready",
+        "imported",
+        "late",
+        "missing",
+        "failed",
+        "rerun"
+      ]
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "date": {
+            "type": "string"
+          },
+          "at": {
+            "type": "string"
+          },
+          "trigger": {
+            "type": "string",
+            "enum": [
+              "schedule",
+              "manual"
+            ]
+          },
+          "result": {
+            "type": "string",
+            "enum": [
+              "not_ready",
+              "imported",
+              "skipped",
+              "failed",
+              "dry_run"
+            ]
+          },
+          "rows": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "inserted": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "replaced": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "historyId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "by": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "date",
+          "at",
+          "trigger",
+          "result",
+          "rows",
+          "inserted",
+          "replaced",
+          "historyId",
+          "message",
+          "by"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "versions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "fileName": {
+            "type": "string"
+          },
+          "fileDate": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PROCESSING",
+              "IMPORTED",
+              "FAILED",
+              "SUPERSEDED",
+              "RERUN"
+            ]
+          },
+          "fileSize": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "fileHash": {
+            "type": "string"
+          },
+          "totalRows": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "insertedRows": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "duplicateInFile": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "alreadyInDb": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "replacedRows": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "previousId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "errorMessage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "startedAt": {
+            "type": "string"
+          },
+          "finishedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "fileName",
+          "fileDate",
+          "status",
+          "fileSize",
+          "fileHash",
+          "totalRows",
+          "insertedRows",
+          "duplicateInFile",
+          "alreadyInDb",
+          "replacedRows",
+          "previousId",
+          "errorMessage",
+          "startedAt",
+          "finishedAt",
+          "createdAt"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "date",
+    "state",
+    "checks",
+    "versions"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,312 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ImportFeedDto",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "kind": {
+      "type": "string",
+      "const": "db_host"
+    },
+    "spec": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "db_host"
+        },
+        "historySource": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]{1,62}$"
+        },
+        "batchPrefix": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]{1,62}$"
+        },
+        "startDate": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "due": {
+          "type": "object",
+          "properties": {
+            "time": {
+              "type": "string",
+              "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+            },
+            "graceMinutes": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 720
+            }
+          },
+          "required": [
+            "time",
+            "graceMinutes"
+          ],
+          "additionalProperties": false
+        },
+        "connectionId": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        "query": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20000
+        },
+        "readinessQuery": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20000
+        },
+        "table": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "pattern": "^(?=.{1,63}$)stg_[a-z0-9]+(_[a-z0-9]+)*_host$"
+            },
+            "columns": {
+              "minItems": 1,
+              "maxItems": 200,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]{0,62}$"
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "varchar",
+                      "char",
+                      "numeric",
+                      "integer",
+                      "bigint",
+                      "date",
+                      "time",
+                      "timestamptz"
+                    ]
+                  },
+                  "length": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 10485760
+                  },
+                  "precision": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 38
+                  },
+                  "scale": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 38
+                  },
+                  "required": {
+                    "type": "boolean"
+                  },
+                  "allowed": {
+                    "minItems": 1,
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 100
+                    }
+                  }
+                },
+                "required": [
+                  "name",
+                  "type",
+                  "required"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "dedupe": {
+              "minItems": 1,
+              "maxItems": 8,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "column": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]{0,62}$"
+                  },
+                  "normalize": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "column",
+                  "normalize"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "name",
+            "columns",
+            "dedupe"
+          ],
+          "additionalProperties": false
+        },
+        "mapping": {
+          "maxItems": 200,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "column": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]{0,62}$"
+              },
+              "expr": {
+                "type": "string",
+                "maxLength": 1000
+              }
+            },
+            "required": [
+              "column",
+              "expr"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "codeRules": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "column": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$"
+                },
+                "rules": {
+                  "maxItems": 200,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "code": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 40
+                      },
+                      "sourceType": {
+                        "type": "string",
+                        "maxLength": 40
+                      },
+                      "transactionType": {
+                        "type": "string",
+                        "maxLength": 100
+                      },
+                      "verified": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "code",
+                      "sourceType",
+                      "transactionType",
+                      "verified"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "column",
+                "rules"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "schedule": {
+          "type": "object",
+          "properties": {
+            "times": {
+              "minItems": 1,
+              "maxItems": 24,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+              }
+            },
+            "maxMinutes": {
+              "type": "integer",
+              "minimum": 5,
+              "maximum": 240
+            }
+          },
+          "required": [
+            "times",
+            "maxMinutes"
+          ],
+          "additionalProperties": false
+        },
+        "revision": {
+          "type": "string",
+          "const": "none"
+        }
+      },
+      "required": [
+        "kind",
+        "historySource",
+        "batchPrefix",
+        "startDate",
+        "due"
+      ],
+      "additionalProperties": false
+    },
+    "schedulerOn": {
+      "type": "boolean"
+    },
+    "tableState": {
+      "type": "string",
+      "enum": [
+        "missing",
+        "created",
+        "adopted"
+      ]
+    },
+    "missing": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "updatedAt": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "kind",
+    "spec",
+    "schedulerOn",
+    "tableState",
+    "missing",
+    "updatedAt"
+  ],
+  "additionalProperties": false
+}

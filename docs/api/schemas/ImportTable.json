@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ImportTable",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^(?=.{1,63}$)stg_[a-z0-9]+(_[a-z0-9]+)*_host$"
+    },
+    "columns": {
+      "minItems": 1,
+      "maxItems": 200,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,62}$"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "varchar",
+              "char",
+              "numeric",
+              "integer",
+              "bigint",
+              "date",
+              "time",
+              "timestamptz"
+            ]
+          },
+          "length": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10485760
+          },
+          "precision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 38
+          },
+          "scale": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 38
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "allowed": {
+            "minItems": 1,
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "required"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "dedupe": {
+      "minItems": 1,
+      "maxItems": 8,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "column": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,62}$"
+          },
+          "normalize": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "column",
+          "normalize"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "name",
+    "columns",
+    "dedupe"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ImportDateState",
+  "type": "string",
+  "enum": [
+    "waiting",
+    "not_ready",
+    "imported",
+    "late",
+    "missing",
+    "failed",
+    "rerun"
+  ]
+}

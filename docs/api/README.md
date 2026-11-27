@@ -383,6 +383,9 @@ only: the stored snapshots, JSON DTO, CSV column order, filters and formula-safe
 | `rules.discard` | Approval rules draft discarded | approval_rules | `{ version }` | — |
 | `day.prepare` | Day prepared for sign-off | recon | `{ stage }` | `{ date, stage }` (prepared) |
 | `day.sign` | Day signed off | recon | `{ stage }` | `{ date, stage }` (signed) |
+| `import.feed_create` | Import feed created | import_feed | – | `{ name, spec }` |
+| `import.feed_update` | Import feed updated | import_feed | changed fields only, of `name`, `spec` | the same fields, new values |
+| `import.feed_delete` | Import feed deleted | import_feed | `{ name, spec }` | – |
 <!-- actions:end -->
 
 ### Backend notes

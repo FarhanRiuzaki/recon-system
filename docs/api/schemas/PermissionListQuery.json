@@ -50,7 +50,8 @@
             "project",
             "space",
             "workflow",
-            "integration"
+            "integration",
+            "import"
           ]
         },
         {
@@ -66,7 +67,8 @@
               "project",
               "space",
               "workflow",
-              "integration"
+              "integration",
+              "import"
             ]
           }
         }

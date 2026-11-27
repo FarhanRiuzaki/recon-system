@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ImportTableState",
+  "type": "string",
+  "enum": [
+    "missing",
+    "created",
+    "adopted"
+  ]
+}

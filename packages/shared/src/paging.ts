@@ -53,3 +53,10 @@ export const RECON_RUN_ITEM_SORTS = ["businessDate"] as const;
 export const RESULT_SORTS = ["businessDate", "status", "amountA", "ref"] as const;
 export const REPORT_TEMPLATE_SORTS = ["name", "updatedAt"] as const;
 export const REPORT_FILE_SORTS = ["madeAt", "from"] as const;
+/** GET /api/imports/feeds (by name by default). */
+export const IMPORT_FEED_SORTS = ["name", "updatedAt"] as const;
+/** GET /api/imports/feeds/{feedId}/runs and /checks (newest first by default). */
+export const IMPORT_RUN_SORTS = ["startedAt"] as const;
+export const IMPORT_CHECK_SORTS = ["at"] as const;
+/** GET /api/imports/feeds/{feedId}/history (newest first by default). */
+export const IMPORT_HISTORY_SORTS = ["createdAt", "fileDate"] as const;

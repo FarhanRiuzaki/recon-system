@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ImportSchedulerState",
+  "type": "string",
+  "enum": [
+    "ok",
+    "missed",
+    "stuck",
+    "lock_left",
+    "connection_failing",
+    "off"
+  ]
+}

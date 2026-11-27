@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ImportCodeRules",
+  "type": "object",
+  "properties": {
+    "column": {
+      "type": "string",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$"
+    },
+    "rules": {
+      "maxItems": 200,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "sourceType": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "transactionType": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "verified": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "code",
+          "sourceType",
+          "transactionType",
+          "verified"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "column",
+    "rules"
+  ],
+  "additionalProperties": false
+}

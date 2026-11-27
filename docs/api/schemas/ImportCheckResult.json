@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ImportCheckResult",
+  "type": "string",
+  "enum": [
+    "not_ready",
+    "imported",
+    "skipped",
+    "failed",
+    "dry_run"
+  ]
+}

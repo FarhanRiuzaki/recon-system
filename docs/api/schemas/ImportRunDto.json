@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ImportRunDto",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "feedId": {
+      "type": "string"
+    },
+    "trigger": {
+      "type": "string",
+      "enum": [
+        "schedule",
+        "manual"
+      ]
+    },
+    "scheduledFor": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "startedAt": {
+      "type": "string"
+    },
+    "heartbeatAt": {
+      "type": "string"
+    },
+    "finishedAt": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "running",
+        "done",
+        "failed",
+        "crashed"
+      ]
+    },
+    "dates": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "message": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "by": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "name"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "id",
+    "feedId",
+    "trigger",
+    "scheduledFor",
+    "startedAt",
+    "heartbeatAt",
+    "finishedAt",
+    "status",
+    "dates",
+    "message",
+    "by"
+  ],
+  "additionalProperties": false
+}

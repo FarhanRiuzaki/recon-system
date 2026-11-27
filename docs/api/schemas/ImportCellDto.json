@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ImportCellDto",
+  "type": "object",
+  "properties": {
+    "date": {
+      "type": "string"
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "waiting",
+        "not_ready",
+        "imported",
+        "late",
+        "missing",
+        "failed",
+        "rerun"
+      ]
+    },
+    "rows": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "at": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "message": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "date",
+    "state",
+    "rows",
+    "at",
+    "message"
+  ],
+  "additionalProperties": false
+}

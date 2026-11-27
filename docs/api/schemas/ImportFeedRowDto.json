@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ImportFeedRowDto",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "historySource": {
+      "type": "string"
+    },
+    "table": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "schedulerOn": {
+      "type": "boolean"
+    },
+    "runTimes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "complete": {
+      "type": "boolean"
+    },
+    "updatedAt": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "historySource",
+    "table",
+    "schedulerOn",
+    "runTimes",
+    "complete",
+    "updatedAt"
+  ],
+  "additionalProperties": false
+}

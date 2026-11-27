@@ -17,6 +17,7 @@ import * as auth from "@starterkit/shared/contracts/auth";
 import * as common from "@starterkit/shared/contracts/common";
 import * as dashboard from "@starterkit/shared/contracts/dashboard";
 import * as me from "@starterkit/shared/contracts/me";
+import * as imports from "@starterkit/shared/contracts/imports";
 import * as inbox from "@starterkit/shared/contracts/inbox";
 import * as reports from "@starterkit/shared/contracts/reports";
 import * as projects from "@starterkit/shared/contracts/projects";
@@ -53,6 +54,10 @@ const COMPOSED = {
   ActivityPage: pageOf(audit.ActivityDto),
   AuthLogPage: pageOf(audit.AuthLogDto),
   InboxFilePage: pageOf(inbox.InboxFileDto),
+  ImportFeedPage: pageOf(imports.ImportFeedRowDto),
+  ImportRunPage: pageOf(imports.ImportRunDto),
+  ImportCheckPage: pageOf(imports.ImportCheckDto),
+  ImportHistoryPage: pageOf(imports.ImportHistoryDto),
   ReportTemplatePage: pageOf(reports.ReportTemplateDto),
   ReportVersionPage: pageOf(reports.ReportVersionDto),
   ReportFilePage: pageOf(reports.ReportFileDto),
@@ -90,7 +95,7 @@ const COMPOSED = {
 
 /** File name → file text, for every zod schema the contract modules export plus the composed ones. */
 export function apiSchemas(): Record<string, string> {
-  const named = [approvals, audit, auth, breaks, workflows, integrations, common, dashboard, inbox, me, reports, projects, rbac, recon, results, sources, spaces, users, COMPOSED].flatMap((m) => Object.entries(m));
+  const named = [approvals, audit, auth, breaks, workflows, integrations, common, dashboard, imports, inbox, me, reports, projects, rbac, recon, results, sources, spaces, users, COMPOSED].flatMap((m) => Object.entries(m));
   const out: Record<string, string> = {};
   for (const [name, schema] of named) {
     if (!(schema instanceof z.ZodType)) continue;
@@ -207,6 +212,9 @@ export const ACTION_SHAPES: Record<string, [target: string, before: string, afte
   "recon.run_rollback": ["recon", "–", "`{ runId, startedAt, runs, rerunId, version, from, to }` (the run rolled back, when it started, how many live runs from it on, and the rerun of the published version over their dates from–to)"],
   "recon.result_columns": ["recon", "`{ columns }` (null = the default columns)", "`{ columns }` (null = back to the default columns)"],
   "recon.simulate": ["recon", "–", "`{ runId, version, specHash, from, to }` (the draft simulated over business dates from–to)"],
+  "import.feed_create": ["import_feed", "–", "`{ name, spec }`"],
+  "import.feed_update": ["import_feed", "changed fields only, of `name`, `spec`", "the same fields, new values"],
+  "import.feed_delete": ["import_feed", "`{ name, spec }`", "–"],
 };
 
 export const README = path.join(path.dirname(SCHEMA_DIR), "README.md");
