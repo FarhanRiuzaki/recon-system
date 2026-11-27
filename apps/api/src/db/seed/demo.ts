@@ -8,6 +8,7 @@ import { log } from "../../kernel/log";
 import { activity as activityTable, authLog as authLogTable } from "../../modules/audit";
 import { hashPassword, LDAP_PASSWORD } from "../../modules/auth";
 import { userIdentities } from "../../modules/oauth";
+import { importFeeds } from "../../modules/imports";
 import { projects as projectsTable } from "../../modules/projects";
 import { roles, userRoles } from "../../modules/rbac";
 import { type SpaceRole, spaceMembers, spaces as spacesTable } from "../../modules/spaces";
@@ -183,6 +184,11 @@ export async function seedDemo(db: Tx, env: Record<string, string | undefined> =
     await tx.insert(spacesTable).values([["treasury", "Treasury"], ["ctop", "CTOP"], ["fico", "FICO"]].map(([code, name]) => ({ id: spaceIds[code as keyof typeof spaceIds], code: code!, name: name! })));
     await tx.insert(spaceMembers).values(DEMO_ACCESS.space.flatMap(([s, username, rs]) => rs.map((role) => ({ spaceId: spaceIds[s], userId: fixed(username), role }))));
     await tx.insert(userRoles).values(Object.entries(DEMO_ACCESS.global).flatMap(([username, rs]) => rs.map((r) => ({ userId: fixed(username), roleId: roleIds.get(r)! }))));
+    // Import section (DEC-066): two host feeds entered for Monitoring only (scheduler off, no staging needed to list them)
+    await tx.insert(importFeeds).values([["Demo KAI host", "DEMO_KAI_TLHIST"], ["Demo Garuda host", "DEMO_GARUDA_TLHIST"]].map(([name, historySource]) => ({
+      id: Bun.randomUUIDv7(), name: name!,
+      spec: { kind: "db_host", historySource, batchPrefix: "HISTORY_TLHIST", startDate: "2026-10-31", due: { time: "06:00", graceMinutes: 30 } },
+    })));
     await seedDemoSources(tx, { treasury: spaceIds.treasury, ctop: spaceIds.ctop, maker: fixed("viewer"), checker: fixed("juli.13"), now });
     await tx.insert(activityTable).values(activity);
     await tx.insert(authLogTable).values(authLog);

@@ -12,6 +12,7 @@ import { oauthController } from "./oauth";
 import { projectsController } from "./projects";
 import { rbacController } from "./rbac";
 import { reconController } from "./recon";
+import { importsController } from "./imports";
 import { inboxController } from "./inbox";
 import { reportsController } from "./reports";
 import { sourcesController } from "./sources";
@@ -45,4 +46,5 @@ export const modules = (deps: AppDeps = {}) =>
     .use(reconController())
     .use(engineController())
     .use(approvalsController())
-    .use(integrationsController());
+    .use(integrationsController())
+    .use(importsController());

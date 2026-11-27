@@ -84,6 +84,9 @@ export type ImportFeedSpec = z.infer<typeof ImportFeedSpec>;
 
 export const ImportFeedBody = z.strictObject({ name: z.string().trim().min(1).max(100), spec: ImportFeedSpec });
 export type ImportFeedBody = z.infer<typeof ImportFeedBody>;
+/** PATCH: the fields sent replace the feed's (a spec is replaced whole). */
+export const ImportFeedPatchBody = ImportFeedBody.partial();
+export type ImportFeedPatchBody = z.infer<typeof ImportFeedPatchBody>;
 
 export const ImportTableState = z.enum(["missing", "created", "adopted"]);
 

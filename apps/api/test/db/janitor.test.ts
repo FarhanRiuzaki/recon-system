@@ -7,6 +7,7 @@ import { xactLock } from "../../src/kernel/locks";
 import { log } from "../../src/kernel/log";
 import { activity, authLog } from "../../src/modules/audit";
 import { authChallenges, loginBackoff, rateLimits, sessions, trustedDevices, userTokens } from "../../src/modules/auth";
+import { importChecks, importFeeds, importRuns } from "../../src/modules/imports";
 import { connectorCalls, connectors } from "../../src/modules/integrations";
 import { oauthStates } from "../../src/modules/oauth";
 import { users } from "../../src/modules/users";
@@ -57,6 +58,13 @@ async function seedRows() {
   const call = (path: string, days: number) => ({ id: Bun.randomUUIDv7(), connectorId: cid, environment: "dev", method: "POST", host: "h", path, startedAt: ago(days * DAY), durationMs: 1,
     outcome: "ok", fullEnc: "v1:x", origin: { module: "m", kind: "k", refId: null, label: "l", href: null } });
   await db.insert(connectorCalls).values([call("live", config().CALL_LOG_FULL_RETENTION_DAYS - 1), call("cleared", config().CALL_LOG_FULL_RETENTION_DAYS + 1), call("old", config().CALL_LOG_RETENTION_DAYS + 1)]);
+  // the Import run and check logs: kept within AUDIT_RETENTION_DAYS, deleted past it
+  const fid = Bun.randomUUIDv7();
+  await db.insert(importFeeds).values({ id: fid, name: "KAI host", spec: { kind: "db_host", historySource: "KAI_TLHIST" } });
+  const run = (msg: string, at: ReturnType<typeof ago>) => ({ id: Bun.randomUUIDv7(), feedId: fid, trigger: "schedule", status: "done", message: msg, startedAt: at, heartbeatAt: at });
+  await db.insert(importRuns).values([run("live", keep), run("old", old)]);
+  const chk = (msg: string, at: ReturnType<typeof ago>) => ({ id: Bun.randomUUIDv7(), feedId: fid, fileDate: "2026-11-03", trigger: "schedule", result: "not_ready", message: msg, at });
+  await db.insert(importChecks).values([chk("live", keep), chk("old", old)]);
   return { live };
 }
 
@@ -72,6 +80,8 @@ const left = async () => ({
   activity: (await db.select({ t: activity.targetId }).from(activity).orderBy(asc(activity.targetId))).map((r) => r.t),
   authLog: (await db.select({ l: authLog.login }).from(authLog)).map((r) => r.l),
   calls: (await db.select({ p: connectorCalls.path, full: connectorCalls.fullEnc }).from(connectorCalls).orderBy(asc(connectorCalls.path))).map((r) => [r.p, r.full !== null]),
+  importRuns: (await db.select({ m: importRuns.message }).from(importRuns)).map((r) => r.m),
+  importChecks: (await db.select({ m: importChecks.message }).from(importChecks)).map((r) => r.m),
 });
 
 beforeEach(truncateAll);
@@ -81,16 +91,17 @@ describe("runJanitor", () => {
     const { live } = await seedRows();
     expect(await runJanitor()).toEqual({
       sessions: 2, auth_challenges: 1, trusted_devices: 2, user_tokens: 1, rate_limits: 1, login_backoff: 1, oauth_states: 1, activity: 1, auth_log: 1, connector_calls: 1, connector_calls_full: 1,
+      import_runs: 1, import_checks: 1,
       // the inbox pass (tendInbox): every active space's root checked, no leftover to sweep
       inbox_roots: expect.any(Number), report_files: expect.any(Number), inbox_leftovers: 0,
     });
     expect(await left()).toEqual({
       sessions: [live], challenges: ["00000000-0000-7000-8000-000000000001"], tokens: ["t-live"], limits: ["live"], devices: ["live"], backoff: ["live"],
-      states: ["live"], activity: ["live"], authLog: ["live"], calls: [["cleared", false], ["live", true]],
+      states: ["live"], activity: ["live"], authLog: ["live"], calls: [["cleared", false], ["live", true]], importRuns: ["live"], importChecks: ["live"],
     });
     // Nothing left to clean: every count is 0.
     const { inbox_roots: _roots, ...rest } = (await runJanitor())!;
-    expect(Object.values(rest)).toEqual([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    expect(Object.values(rest)).toEqual([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
   });
 
   it("the full-call purge has its partial index: started_at where the full call is still kept", async () => {

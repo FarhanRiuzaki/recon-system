@@ -5,6 +5,7 @@ import { closeJobs, enqueue, QUEUES, scheduleEvery, startWorker, unschedule, wor
 import { log } from "./kernel/log";
 import { workerClient, workerDb } from "./kernel/worker-db";
 import { engineHandlers, queueBackfill } from "./modules/engine";
+import { closeStaging } from "./modules/imports";
 import { ingestHandlers } from "./modules/ingest";
 import { callsLogged, integrationsHandlers } from "./modules/integrations";
 import { reportsHandlers } from "./modules/reports";
@@ -48,6 +49,7 @@ async function shutdown(signal: string) {
   await callsLogged(); // the call rows of the last sends are written before the pools close
   await server.stop(true);
   await closeJobs();
+  await closeStaging();
   await workerClient.close();
   process.exit(0);
 }
