@@ -364,8 +364,8 @@ function viewPageViolations(fs: F[], viewPages: readonly string[]): string[] {
 
 /** The product name is one constant (BRAND in packages/shared/src/brand.ts); titles, error sources and the logo read it. */
 const BRAND_HOME = `${SHARED}brand.ts`;
-const NAME = new RegExp(`\\b${BRAND.name}\\b`);
-const brandViolations = (fs: F[]) => fs.filter(({ r, src }) => r !== BRAND_HOME && NAME.test(src)).map(({ r }) => `${r}: write BRAND.name, not the product name`);
+const NAME = new RegExp(`\\b(${BRAND.name}|${BRAND.short})\\b`);
+const brandViolations = (fs: F[]) => fs.filter(({ r, src }) => r !== BRAND_HOME && NAME.test(src)).map(({ r }) => `${r}: write BRAND.name or BRAND.short, not the product name`);
 
 /** Each signed-in page.tsx guards with the permission pagePerm gives its path (the layout's 404 check uses pagePerm). */
 /**
@@ -901,12 +901,13 @@ import { INTENTS } from "@starterkit/ui/ds";\nimport x from "bunyan";`),
     ])).toEqual([`${WEB}features/users/form.tsx: a new-password field without PasswordChecks`]);
   });
 
-  it("a literal product name outside brand.ts is reported; BRAND.name and the package scope pass", () => {
+  it("a literal product name or its short form outside brand.ts is reported; BRAND.name and the package scope pass", () => {
     expect(brandViolations([
       f(`${WEB}app/(main)/users/page.tsx`, `export const metadata = { title: "Users · ${BRAND.name}" };`),
+      f(`${WEB}app/(main)/roles/page.tsx`, `export const metadata = { title: "Roles · ${BRAND.short}" };`),
       f(`${WEB}features/x/a.tsx`, `<Failure source={BRAND.name} />; import { Panel } from "@starterkit/ui/ds";`),
-      f(BRAND_HOME, `export const BRAND = { name: "${BRAND.name}" } as const;`),
-    ])).toEqual([`${WEB}app/(main)/users/page.tsx: write BRAND.name, not the product name`]);
+      f(BRAND_HOME, `export const BRAND = { name: "${BRAND.name}", short: "${BRAND.short}" } as const;`),
+    ])).toEqual([`${WEB}app/(main)/users/page.tsx: write BRAND.name or BRAND.short, not the product name`, `${WEB}app/(main)/roles/page.tsx: write BRAND.name or BRAND.short, not the product name`]);
   });
 
   it("a list screen without SavedViewsMenu or ColumnsMenu, or not passing hidden to DataTable, is reported", () => {

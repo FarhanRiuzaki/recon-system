@@ -166,7 +166,7 @@ describe("/api/me/2fa", () => {
     expect(s.status).toBe(200);
     const { secret, otpauthUrl } = (await s.json()) as { secret: string; otpauthUrl: string };
     expect(otpauthUrl).toContain(`secret=${secret}`);
-    expect(otpauthUrl).toContain(`issuer=${BRAND.name}`);
+    expect(otpauthUrl).toContain(new URLSearchParams({ issuer: BRAND.name }).toString());
     let row = await userRow("admin");
     expect(row.totp_secret).toBeNull();
     expect(row.pending_totp_secret).not.toBe(secret); // encrypted at rest
@@ -422,7 +422,7 @@ describe("product name", () => {
   it("modules/me/service.ts reads BRAND and has no product-name literal", async () => {
     const src = await Bun.file(new URL("../../service.ts", import.meta.url)).text();
     expect(src).toMatch(/import \{ BRAND \} from "@starterkit\/shared\/brand"/);
-    expect(src).not.toMatch(new RegExp(`\\b${BRAND.name}\\b`));
+    expect(src).not.toMatch(new RegExp(`\\b(${BRAND.name}|${BRAND.short})\\b`));
   });
 });
 

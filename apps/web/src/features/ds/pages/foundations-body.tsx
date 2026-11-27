@@ -3,7 +3,7 @@
 import { Brand, Panel } from "@starterkit/ui/ds";
 import { Icon } from "@starterkit/ui/ui/icon";
 import * as Icons from "@starterkit/ui/ui/icons";
-import { SunnyGoMark, SunnyGoWordmark } from "@/components/brand";
+import { LogoMark, LogoWordmark } from "@/components/brand";
 import { SectionTitle } from "../section-title";
 import { useHashScroll } from "../use-hash-scroll";
 
@@ -47,19 +47,19 @@ const TYPE = [
 
 /** The Brand slot at the sizes the app uses (the logo itself lives in components/brand). */
 const LOGOS = [
-  { name: "sidebar · wordmark 104 px", collapsed: false, wordmark: <SunnyGoWordmark className="w-26" /> },
-  { name: "sign-in card · wordmark 120 px", collapsed: false, wordmark: <SunnyGoWordmark className="w-30" /> },
-  { name: "rail · mark 28 px", collapsed: true, wordmark: null },
+  { name: "sidebar · wordmark 36 px tall", collapsed: false, wordmark: <LogoWordmark className="h-9 w-auto" /> },
+  { name: "sign-in page · wordmark 48 px tall", collapsed: false, wordmark: <LogoWordmark className="h-12 w-auto" /> },
+  { name: "rail · mark 36 px wide", collapsed: true, wordmark: null },
 ] as const;
 
 function Tokens() {
   return (
     <div className="grid grid-cols-12 gap-gutter">
-      <Panel title="Brand" description="Wordmark when expanded, mark in the rail; clear space = the sun's diameter" className="col-span-12">
+      <Panel title="Brand" description="Wordmark when expanded, mark in the rail; the artwork's own colours in every palette" className="col-span-12">
         <ul className="flex flex-wrap items-end gap-12">
           {LOGOS.map((l) => (
             <li key={l.name} className="grid justify-items-start gap-4">
-              <Brand collapsed={l.collapsed} mark={<SunnyGoMark className="size-7" />} wordmark={l.wordmark} />
+              <Brand collapsed={l.collapsed} mark={<LogoMark className="h-auto w-9" />} wordmark={l.wordmark} />
               <span className="font-mono text-caption text-fg-3">{l.name}</span>
             </li>
           ))}

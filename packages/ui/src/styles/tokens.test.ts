@@ -120,6 +120,10 @@ describe.each([["light", false], ["dark", true]] as const)("tokens (%s)", (name,
     expect(Object.keys(t).filter((k) => t[k] === "#ffa928")).toEqual(["brand-sun"]);
     if (!dark) expect([t.primary, t["primary-ink"], t["primary-soft"]]).toEqual(["#0d1530", "#0d1530", "#eff2fa"]);
   });
+  it("logo: the artwork's own colours in both themes; only the lettering turns white in dark", () => {
+    expect(["yellow", "orange", "flame", "silver", "grey"].map((k) => t[`logo-${k}`])).toEqual(["#ffca08", "#fa9d1c", "#f37022", "#9e9fa3", "#636466"]);
+    expect(t["logo-ink"]).toBe(dark ? "#ffffff" : "#636466");
+  });
   it("amber only for the sun: no amber/orange status token within 1.3:1 of --brand-sun", () => {
     // Hue-scoped: luminance contrast alone ignores hue, and green or grey status inks at the sun's lightness are no amber.
     const [sunHue] = hueSat(t["brand-sun"]!);

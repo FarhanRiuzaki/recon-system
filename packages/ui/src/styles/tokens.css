@@ -28,9 +28,16 @@
   --fg-2: #4a5263; /* cool grey (Airform's ink family): 7.84:1 card, 6.95:1 stopped-soft */
   --fg-3: #636b7c; /* 5.35:1 card, 4.74:1 stopped-soft */
   --fg-4: #a1a1aa;
-  /* logo only (brand kit): letters and the sun; amber is never a UI colour */
+  /* sign-in backdrop only (floor and records, the wave): amber is never a UI colour */
   --brand-ink: #0d1530;
   --brand-sun: #ffa928;
+  /* logo only (components/brand): the artwork's own colours, never a UI colour; palettes leave them alone */
+  --logo-yellow: #ffca08;
+  --logo-orange: #fa9d1c;
+  --logo-flame: #f37022;
+  --logo-silver: #9e9fa3;
+  --logo-grey: #636466;
+  --logo-ink: #636466; /* the lettering */
   /* selection, primary (navy family, from the brand), action */
   --primary: #0d1530;
   --primary-hover: #1b2547;
@@ -224,6 +231,7 @@
   --primary-ink: #c9d3f0;
   --brand-ink: #ffffff;
   --brand-sun: #ffa928;
+  --logo-ink: #ffffff; /* the lettering on a dark page */
   --action: #f2f2f3;
   --action-fg: #151517;
   --action-hover: #d9d9dc;

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { authContext } from "@/lib/server/session";
-import { SunnyGoWordmark } from "@/components/brand";
+import { LogoWordmark } from "@/components/brand";
 import { BRAND } from "@starterkit/shared/brand";
 import { AuthBackdrop } from "@/features/auth/auth-backdrop";
 
@@ -12,7 +12,7 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
       {/* The static landscape first (CSS requests only the active theme's artwork), then the live ledger field over it.
           The field covers the whole page: the headline and the footer note sit on a soft scrim, the form on its card. */}
       <AuthBackdrop />
-      <header className="relative mx-auto flex w-full max-w-320 py-5 md:py-10"><SunnyGoWordmark className="w-30.5" /></header>
+      <header className="relative mx-auto flex w-full max-w-320 py-5 md:py-10"><LogoWordmark className="h-12 w-auto" /></header>
       {/* The headline and the card sit centred on one line in the height between the header and the footer. */}
       <div className="relative mx-auto grid w-full max-w-308 flex-1 content-center items-center gap-10 py-6 md:grid-cols-2 md:gap-12 md:py-4 xl:gap-24">
         <div className="auth-scrim grid gap-6 max-md:hidden">

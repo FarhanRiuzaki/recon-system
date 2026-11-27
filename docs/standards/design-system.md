@@ -188,8 +188,10 @@ All colours are CSS custom properties in `packages/ui/src/styles/tokens.css`, ma
 | `--action-ring` | `#0d0d0d` | The primary button's ring: its 1 px border, inside the box | non-text |
 | `--action-edge-top` / `-mid` / `-bottom` | `#4b4951` / `#31303a` / `#18171b` | The lit edge just inside the ring (inset shadows): top, sides, bottom | non-text |
 | `--row-selected` | `#f5f9ff` | Selected table row | primary 17.03:1 |
-| `--brand-ink` | `#0d1530` | Logo letters only (`components/brand`) | logo, exempt |
-| `--brand-sun` | `#ffa928` | Logo sun only; amber is never a UI colour | logo, exempt |
+| `--brand-ink` | `#0d1530` | Sign-in backdrop floor and records only | decoration, exempt |
+| `--brand-sun` | `#ffa928` | Sign-in backdrop wave only; amber is never a UI colour | decoration, exempt |
+| `--logo-yellow` / `-orange` / `-flame` / `-silver` / `-grey` | `#ffca08` / `#fa9d1c` / `#f37022` / `#9e9fa3` / `#636466` | Logo symbol only (`components/brand`): the artwork's own colours, the same in every theme and palette | logo, exempt |
+| `--logo-ink` | `#636466` | Logo lettering only | logo, exempt |
 
 Status (reserved — never used as series colours). Each has a mark (icon/dot), an ink (text, ≥ 4.5:1 on its soft)
 and a soft (chip bg):
@@ -228,7 +230,8 @@ Down ink on it 4.58:1 (dark 5.39:1), pinned by `tokens.test.ts` "text down-ink o
 | `--primary` | `#c9d3f0` (text `#0d1530`) | navy tint: 11.00:1 card, 12.91:1 bg; navy on it 12.05:1 |
 | `--primary-hover` | `#dde3f6` | navy on it 14.05:1 |
 | `--primary-soft` | `#18233a` | primary on it 10.49:1 |
-| `--brand-ink` / `--brand-sun` | `#ffffff` / `#ffa928` | logo only (dark version of the kit) |
+| `--brand-ink` / `--brand-sun` | `#ffffff` / `#ffa928` | sign-in backdrop only |
+| `--logo-ink` | `#ffffff` | logo lettering on a dark page (the symbol keeps its colours) |
 | `--action` | `#f2f2f3` (text `#151517`) | the CTA inverts to white in dark |
 | `--action-top` / `--action-bottom` | `#f4f4f5` / `#e4e4e7` | primary button gradient; `#151517` on them 16.59 / 14.37:1 |
 | `--action-hover-top` / `--action-hover-bottom` | `#ffffff` / `#ececef` | `#151517` on them 18.24 / 15.47:1 |
