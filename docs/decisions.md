@@ -926,3 +926,29 @@ implementation MEGA-SDD Console `feat/trusted-device`). Design: `docs/superpower
 - Open: the directory gateway checks passwords only, so an account disabled in the directory but still active here can
   use a live trust until it ends (≤ 30 days idle) or the account is deactivated here.
 - Tests: `apps/api/src/modules/auth/tests/integration/devices.test.ts`, `apps/web/src/app/api/auth/auth-routes.test.ts`.
+
+## DEC-066 — Import section: host feeds (DWH → stg) move from import-host into recon-system, monitoring first
+
+27 November 2026 — owner, in discussion. Design: `docs/superpowers/specs/2026-11-27-import-host-design.md`.
+Reference implementation: `/root/apps/import-engine/import-host` (Python, cron), ported, not called.
+
+- A global sidebar group **Import**, under Setup, with **Monitoring** (its own page, the group's entry, a badge of open
+  issues) and **Feeds** (`import.view`, `import.manage`), loads the staging tables in `recon_engine_import`. No
+  Connections menu: host feeds share one DWH connection (edited from Feeds); a biller or file feed keeps its own
+  connection inside the feed, never shared. First kind: host feeds, DWH `HISTORY_TLHIST` → `stg_<biller>_host`
+  (KAI, INDOVISION, GARUDA). Biller (FTP) and other files follow on the same engine; when is to be discussed.
+- The flow stays **DWH/FTP → stg → recon-system source**. stg and `import_file_history` are where arrival is monitored
+  and where late data leaves its history; recon-engine (Laravel) is retired, so recon-system is stg's only reader.
+- On screen: the DWH connection, the query (`:julian_mis_date`), the target table (created from the screen or an
+  existing one adopted), the column mapping (CEL), the code rules (verified gate), the schedule and the late-data rules
+  (readiness, date range, revision policy, due time), a feed × date monitor, a run log and a check log (`import_checks`).
+- The DWH stays SELECT-only, enforced in code: the connector's SELECT check gains import-host's forbidden-keyword scan.
+- The engine writes the same `import_file_history` rows as import-host (same `source` and `file_name`), so history
+  continues and both engines share one PROCESSING lock. Staging is reached through `STAGING_DATABASE_URL`, the login
+  import-host uses.
+- Monitoring comes first and watches import-host's feeds from `import_file_history` while the cron still runs. It
+  shows late, missing and failed dates and each scheduler's health from a run log (`import_runs`: missed, stuck, lock
+  left, connection failing, off; worker down as a banner). Alerts: the badge and on-screen notices; no email.
+- No maker-checker on feeds. Rollback of data is wanted later, not now.
+- Switch: every feed's scheduler starts off; import-host's cron keeps running. The owner turns the schedulers on and
+  disables the cron line when they choose. No formal parallel run.
